@@ -238,6 +238,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Ash469/school_management_app/main/assets/images/school_management_app.png" alt="School Management App" width="300"/>
+  <img src="lib/assests/app_logo.png" width="300"/>
   <p>Made with ❤️ for better school management</p>
 </div>
