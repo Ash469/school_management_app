@@ -4,6 +4,7 @@ import '../models/school_model.dart';
 import '../services/api_service.dart';
 import '../screens/login_screen.dart';
 import '../utils/app_theme.dart';
+import '../utils/storage_util.dart'; // Import storage util
 import 'school_admin/class_management_screen.dart';
 import 'school_admin/teacher_management_screen.dart';
 import 'school_admin/student_management_screen.dart';
@@ -13,6 +14,7 @@ import 'school_admin/fee_collection_screen.dart';
 import 'school_admin/schedule_management_screen.dart';
 import 'school_admin/notifiaction_management_screen.dart';
 import 'school_admin/analytic_dashboard.dart';
+import 'school_selection_screen.dart';
 
 class SchoolAdminDashboard extends StatefulWidget {
   final User user;
@@ -29,6 +31,9 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
   School? _school;
   List<Map<String, dynamic>> _stats = [];
   int _currentIndex = 0;
+  String _schoolName = "";
+  String _schoolId = "";
+  String _schoolToken = "";
 
   // Theme colors from app_theme.dart
   late Color _primaryColor;
@@ -41,7 +46,40 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
     super.initState();
     _apiService = ApiService(baseUrl: 'https://api.schoolmanagement.com');
     _loadThemeColors();
+    _loadSchoolInfo(); // Added method to load school info
     _loadDashboardData();
+  }
+
+  // New method to load school information
+  Future<void> _loadSchoolInfo() async {
+    try {
+      // Get stored school information
+      final schoolName = await StorageUtil.getString('schoolName') ?? 'Unknown School';
+      final schoolId = await StorageUtil.getString('schoolId') ?? 'Unknown ID';
+      final schoolToken = await StorageUtil.getString('schoolToken') ?? 'Unknown Token';
+      
+      setState(() {
+        _schoolName = schoolName;
+        _schoolId = schoolId;
+        _schoolToken = schoolToken;
+      });
+      
+      // Log the admin login information to console
+      print('🔐 ==========================================');
+      print('🔐 ADMIN LOGIN INFORMATION:');
+      print('🔐 You are logged in as School Admin of:');
+      print('🔐 School Name: $_schoolName');
+      print('🔐 School ID: $_schoolId');
+      print('🔐 Access Token: $_schoolToken');
+      print('🔐 User: ${widget.user.profile.firstName} ${widget.user.profile.lastName}');
+      print('🔐 User Email: ${widget.user.email}');
+      print('🔐 ==========================================');
+      
+      // Also dump all storage for debugging
+      await StorageUtil.debugDumpAll();
+    } catch (e) {
+      print('⚠️ Error loading school info: $e');
+    }
   }
 
   void _loadThemeColors() {
@@ -85,11 +123,16 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
               Icon(Icons.school,
                   color: Colors.white, size: isSmallScreen ? 22 : 28),
               SizedBox(width: isSmallScreen ? 8 : 12),
-              Text(
-                'School Admin',
-                style: TextStyle(
+              Expanded(
+                child: Text(
+                  'School Admin', 
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: isSmallScreen ? 18 : 20),
+                    fontSize: isSmallScreen ? 18 : 20
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -157,12 +200,27 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                     end: Alignment.bottomRight,
                   ),
                 ),
-                accountName: Text(
-                  '${widget.user.profile.firstName} ${widget.user.profile.lastName}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.white),
+                accountName: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${widget.user.profile.firstName} ${widget.user.profile.lastName}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _schoolName,  // Display school name here
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w400,
+                        fontSize: 14,
+                        color: Colors.white70
+                      ),
+                    ),
+                  ],
                 ),
                 accountEmail: Text(
                   widget.user.email,
@@ -220,9 +278,36 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
               _buildDrawerTile(Icons.event, 'Events', _navigateToEvents),
               const Divider(),
               _buildDrawerTile(Icons.exit_to_app, 'Logout', () {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (route) => false,
+                // Show confirmation dialog before logout
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: const Text('Confirm Logout'),
+                      content: const Text('Are you sure you want to log out?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            // Navigate to school selection screen after logout
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const SchoolSelectionScreen()),
+                              (route) => false,
+                            );
+                          },
+                          child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    );
+                  },
                 );
               }),
             ],
@@ -238,6 +323,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      _buildSchoolHeader(), 
                       if (_school != null) _buildSchoolInfoCard(),
                       const SizedBox(height: 16),
                       _buildStatsGrid(),
@@ -264,6 +350,10 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
           showUnselectedLabels: true,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.white,
+          selectedItemColor: _primaryColor,
+          unselectedItemColor: Colors.grey[600],
           items: const [
             BottomNavigationBarItem(
                 icon: Icon(Icons.dashboard), label: 'Dashboard'),
@@ -277,6 +367,13 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
           onTap: _handleBottomNavTap,
         ),
       ),
+    );
+  }
+
+  // New widget to display school information at the top of the dashboard
+  Widget _buildSchoolHeader() {
+    return Card(
+    
     );
   }
 
@@ -650,19 +747,13 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _school!.name,
+                    _schoolName, 
                     style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.white),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Academic Year: ${_school!.settings.academicYear.start.year}-${_school!.settings.academicYear.end.year}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),

@@ -8,6 +8,7 @@ import 'teachers/teacher_grading_screen.dart';
 import 'teachers/teacher_notifications_screen.dart';
 import 'package:intl/intl.dart';
 import 'login_screen.dart'; // Add this import for the LoginScreen
+import 'school_selection_screen.dart'; // Import the SchoolSelectionScreen
 
 class TeacherDashboard extends StatefulWidget {
   final User user;
@@ -422,10 +423,10 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                           TextButton(
                             onPressed: () {
                               Navigator.of(context).pop();
-                              // Navigate to login screen after logout
+                              // Navigate to school selection screen after logout
                               Navigator.pushReplacement(
                                 context,
-                                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                                MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
                               );
                             },
                             child: const Text('Logout', style: TextStyle(color: Colors.red)),

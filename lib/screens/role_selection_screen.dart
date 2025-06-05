@@ -1,12 +1,66 @@
 import 'package:flutter/material.dart';
 import '../screens/login_screen.dart';
+import '../utils/storage_util.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'school_selection_screen.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
-  const RoleSelectionScreen({Key? key}) : super(key: key);
+  final String schoolName;
+  final String schoolToken;
+  
+  const RoleSelectionScreen({
+    Key? key, 
+    required this.schoolName,
+    required this.schoolToken,
+  }) : super(key: key);
+
+  Future<void> _logout(BuildContext context) async {
+    // Clear all school-related stored data
+    print("Clearing school data from SharedPreferences...");
+    
+    // Use SharedPreferences directly to remove the keys
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('schoolToken');
+    await prefs.remove('schoolName');
+    await prefs.remove('schoolId');
+    
+    // Verify data was cleared
+    print("Remaining keys after clear: ${prefs.getKeys()}");
+
+    // Navigate back to school selection
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Print school info when the screen builds
+    print("🏫 CURRENT SCHOOL INFO IN ROLE SELECTION:");
+    print("🏫 School Name: $schoolName");
+    print("🏫 School Token: $schoolToken");
+    
+    // Also print all stored data
+    // StorageUtil.debugPrintAll();
+    
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _logout(context),
+          tooltip: 'Back to School Selection',
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _logout(context),
+            tooltip: 'Change School',
+          ),
+        ],
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -43,11 +97,11 @@ class RoleSelectionScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  const Text(
-                    'School Management',
+                  Text(
+                    schoolName,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 32,
+                    style: const TextStyle(
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: Colors.blue,
                     ),
@@ -114,7 +168,11 @@ class RoleSelectionScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => LoginScreen(selectedRole: role),
+            builder: (context) => LoginScreen(
+              selectedRole: role,
+              schoolToken: schoolToken,
+              schoolName: schoolName,
+            ),
           ),
         );
       },

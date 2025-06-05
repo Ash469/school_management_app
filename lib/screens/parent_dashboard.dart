@@ -5,6 +5,7 @@ import '../utils/app_theme.dart';
 import '../screens/parents/attendance_screen.dart';
 import '../screens/parents/fee_management_screen.dart';
 import '../screens/parents/performance_screen.dart';
+import 'school_selection_screen.dart';
 
 class ParentDashboard extends StatefulWidget {
   final User user;
@@ -1795,7 +1796,12 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               onPressed: () {
                 Navigator.of(context).pop();
                 // Navigate to role selection screen after logout
-                Navigator.pushReplacementNamed(context, '/');
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SchoolSelectionScreen(),
+                  ),
+                );
               },
               child: const Text('Logout', style: TextStyle(color: Colors.red)),
             ),

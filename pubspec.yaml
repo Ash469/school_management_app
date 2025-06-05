@@ -42,6 +42,8 @@ dependencies:
   collection: ^1.18.0  # Updated from 1.17.0 to fix UnmodifiableUint8ListView issue
   table_calendar: ^3.2.0
   fl_chart: ^0.71.0
+  shared_preferences: ^2.5.3
+  permission_handler: ^11.0.1
 
 dev_dependencies:
   flutter_test:

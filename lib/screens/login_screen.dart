@@ -7,8 +7,15 @@ import 'school_admin_dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? selectedRole;
+  final String schoolName;
+  final String schoolToken;
   
-  const LoginScreen({Key? key, this.selectedRole}) : super(key: key);
+  const LoginScreen({
+    Key? key, 
+    this.selectedRole, 
+    required this.schoolName,
+    required this.schoolToken,
+  }) : super(key: key);
 
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -58,6 +65,8 @@ class _LoginScreenState extends State<LoginScreen> {
         id: '1',
         email: _emailController.text.trim(),
         role: role,
+        schoolToken: widget.schoolToken,
+        schoolName: widget.schoolName,
         profile: UserProfile(
           firstName: role == 'school_admin' ? 'Admin' : 
                     role == 'teacher' ? 'Teacher' :
@@ -194,6 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           },
         ),
+        title: Text(widget.schoolName),
       ) : null,
       body: Container(
         decoration: BoxDecoration(
@@ -244,7 +254,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Text(
                             _showLoginForm 
                                 ? '${_getRoleName(_selectedRole)} Login' 
-                                : 'School Management',
+                                : widget.schoolName,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 28,

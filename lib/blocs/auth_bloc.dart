@@ -127,7 +127,24 @@ class AuthBloc {
   // Helper method to get the User model from currentUser value
   User? getCurrentUser() {
     if (currentUser.value == null) return null;
-    return User.fromJson(currentUser.value!);
+    
+    final userData = currentUser.value!;
+    final userProfile = UserProfile(
+      firstName: userData['profile']['firstName'] ?? '',
+      lastName: userData['profile']['lastName'] ?? '',
+      phone: userData['profile']['phoneNumber'] ?? '',
+      address: userData['profile']['address'] ?? '',
+      profilePicture: userData['profile']['profilePicture'] ?? '',
+    );
+    
+    return User(
+      id: userData['_id'] ?? '',
+      email: userData['email'] ?? '',
+      role: userData['role'] ?? '',
+      schoolToken: userData['schoolId'] ?? '',
+      schoolName: userData['schoolName'] ?? '',
+      profile: userProfile,
+    );
   }
   
   void dispose() {

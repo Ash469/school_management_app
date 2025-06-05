@@ -8,6 +8,7 @@ import 'student/grades_screen.dart';
 import 'student/forms_screen.dart';
 import 'student/resource_library_screen.dart';
 import 'student/student_profile_screen.dart'; // Add this import for Student Profile
+import 'school_selection_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   final User user;
@@ -434,7 +435,9 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                           // Navigate to login screen after logout
                           Navigator.pushReplacement(
                             context,
-                            MaterialPageRoute(builder: (context) => const LoginScreen()),
+                            MaterialPageRoute(
+                              builder: (context) => const SchoolSelectionScreen(),
+                            ),
                           );
                         },
                         child: const Text('Logout', style: TextStyle(color: Colors.red)),
@@ -841,7 +844,7 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
           ),
         ),
       ),
-    );
+      );
   }
 
   void _showProfile(BuildContext context) {

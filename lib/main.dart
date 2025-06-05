@@ -1,68 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/login_screen.dart';
-import 'screens/student_dashboard.dart';
-import 'screens/teacher_dashboard.dart';
-import 'screens/parent_dashboard.dart';
-import 'screens/school_admin_dashboard.dart';
-// Import other necessary screens
-import 'screens/role_selection_screen.dart';
-import 'models/user_model.dart';
+import 'screens/school_selection_screen.dart';
+import 'utils/storage_util.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-  runApp(const SchoolApp());
+  
+  // Configure app to keep running when permissions dialogs appear
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, 
+      overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom]);
+  
+  try {
+    // Initialize StorageUtil and show status
+    print('🔄 Initializing storage utilities...');
+    final storageInitialized = await StorageUtil.init();
+    print('🔍 StorageUtil initialized: $storageInitialized');
+    
+    // Force a write to verify storage is working
+    await StorageUtil.setString('app_initialized', DateTime.now().toString());
+    final verifyValue = await StorageUtil.getString('app_initialized');
+    print('🔍 Verification write/read test: ${verifyValue != null ? "SUCCESS" : "FAILED"}');
+    
+    // Dump all stored values for debugging
+    await StorageUtil.debugDumpAll();
+  } catch (e) {
+    print('⚠️ Error during initialization: $e');
+    // Continue with app launch even if initialization fails
+  }
+  
+  runApp(const MyApp());
 }
 
-class SchoolApp extends StatelessWidget {
-  const SchoolApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'School Management',
+      title: 'School Management App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
         useMaterial3: true,
       ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-        useMaterial3: true,
-      ),
-      themeMode: ThemeMode.system,
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const RoleSelectionScreen(),
-        '/admin_dashboard': (context) => SchoolAdminDashboard(
-              user: ModalRoute.of(context)!.settings.arguments as User,
-            ),
-        '/teacher_dashboard': (context) => TeacherDashboard(
-              user: ModalRoute.of(context)!.settings.arguments as User,
-            ),
-        '/student_dashboard': (context) => StudentDashboard(
-              user: ModalRoute.of(context)!.settings.arguments as User,
-            ),
-        '/parent_dashboard': (context) => ParentDashboard(
-              user: ModalRoute.of(context)!.settings.arguments as User,
-            ),
-      },
-      onGenerateRoute: (settings) {
-        // Default route for any undefined routes
-        return MaterialPageRoute(
-          builder: (context) => Scaffold(
-            appBar: AppBar(title: const Text('Page Not Found')),
-            body: const Center(child: Text('The requested page does not exist.')),
-          ),
-        );
-      },
+      home: const SchoolSelectionScreen(),
     );
   }
 }

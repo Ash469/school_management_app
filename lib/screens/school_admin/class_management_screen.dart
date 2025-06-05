@@ -441,17 +441,17 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       appBar: AppBar(
         title: Text('Class Management', 
           style: TextStyle(
-            color: _primaryColor,
+            color: Colors.white,
             fontWeight: FontWeight.bold,
           )
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: _primaryColor,
         elevation: 2,
-        iconTheme: IconThemeData(color: _primaryColor),
+        iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.white, Colors.grey.shade50],
+              colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -459,7 +459,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.notifications, color: _accentColor),
+            icon: const Icon(Icons.notifications, color: Colors.white),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('No new notifications'))
