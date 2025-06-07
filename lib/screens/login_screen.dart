@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
+import '../utils/storage_util.dart';
 import 'student_dashboard.dart';
 import 'teacher_dashboard.dart';
 import 'parent_dashboard.dart';
@@ -47,7 +50,39 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
   
-  void _navigateBasedOnRole(String role) async {
+  // Helper methods for role-related information
+  String _getRoleName(String role) {
+    switch (role) {
+      case 'school_admin': return 'School Admin';
+      case 'teacher': return 'Teacher';
+      case 'student': return 'Student';
+      case 'parent': return 'Parent';
+      default: return 'User';
+    }
+  }
+
+  Color _getRoleColor(String role) {
+    switch (role) {
+      case 'school_admin': return Colors.blue;
+      case 'teacher': return Colors.green;
+      case 'student': return Colors.orange;
+      case 'parent': return Colors.purple;
+      default: return Colors.grey;
+    }
+  }
+
+  IconData _getRoleIcon(String role) {
+    switch (role) {
+      case 'school_admin': return Icons.admin_panel_settings;
+      case 'teacher': return Icons.school;
+      case 'student': return Icons.person;
+      case 'parent': return Icons.family_restroom;
+      default: return Icons.person;
+    }
+  }
+  
+  // Rename this method to _navigateBasedOnRoleDemo for clarity
+  void _navigateBasedOnRoleDemo(String role) async {
     setState(() {
       _isLoading = true;
     });
@@ -80,36 +115,21 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
 
-      switch (role) {
-        case 'school_admin':
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => SchoolAdminDashboard(user: user)),
-          );
-          break;
-        case 'teacher':
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => TeacherDashboard(user: user)),
-          );
-          break;
-        case 'student':
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => StudentDashboard(user: user)),
-          );
-          break;
-        case 'parent':
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => ParentDashboard(user: user)),
-          );
-          break;
-        default:
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$role dashboard not implemented yet')),
-          );
-      }
+      // Store user information in persistent storage
+      await StorageUtil.setString('userId', user.id);
+      await StorageUtil.setString('userEmail', user.email);
+      await StorageUtil.setString('userRole', user.role);
+      await StorageUtil.setString('userFirstName', user.profile.firstName);
+      await StorageUtil.setString('userLastName', user.profile.lastName);
+      await StorageUtil.setString('userPhone', user.profile.phone);
+      await StorageUtil.setString('userAddress', user.profile.address);
+      await StorageUtil.setString('userProfilePic', user.profile.profilePicture);
+      
+      // Flag to indicate user is logged in
+      await StorageUtil.setBool('isLoggedIn', true);
+
+      // Call the main navigation method with the user
+      _navigateBasedOnRole(role, user);
     } else {
       // Show an error message if login fails
       ScaffoldMessenger.of(context).showSnackBar(
@@ -118,62 +138,154 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  String _getRoleName(String role) {
+  void _navigateBasedOnRole(String role, User user) {
+    if (!mounted) return;
+    
     switch (role) {
-      case 'school_admin': return 'School Admin';
-      case 'teacher': return 'Teacher';
-      case 'student': return 'Student';
-      case 'parent': return 'Parent';
-      default: return 'User';
+      case 'school_admin':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => SchoolAdminDashboard(user: user)),
+        );
+        break;
+      case 'teacher':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => TeacherDashboard(user: user)),
+        );
+        break;
+      case 'student':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => StudentDashboard(user: user)),
+        );
+        break;
+      case 'parent':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => ParentDashboard(user: user)),
+        );
+        break;
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$role dashboard not implemented yet')),
+        );
     }
   }
-
-  Color _getRoleColor(String role) {
-    switch (role) {
-      case 'school_admin': return Colors.blue;
-      case 'teacher': return Colors.green;
-      case 'student': return Colors.orange;
-      case 'parent': return Colors.purple;
-      default: return Colors.grey;
-    }
-  }
-
-  IconData _getRoleIcon(String role) {
-    switch (role) {
-      case 'school_admin': return Icons.admin_panel_settings;
-      case 'teacher': return Icons.school;
-      case 'student': return Icons.person;
-      case 'parent': return Icons.family_restroom;
-      default: return Icons.person;
-    }
-  }
-
+  
   void _handleLogin() async {
     setState(() {
       _isLoading = true;
     });
     
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
-    
-    // Simplified login logic for demo
     if (_formKey.currentState!.validate()) {
       String email = _emailController.text.trim();
       String password = _passwordController.text;
       
-      // In a real app, you would verify credentials with a backend
-      if (email == "parent@example.com" && password == "password") {
-        _navigateBasedOnRole('parent');
-      } else if (email == "teacher@example.com" && password == "password") {
-        _navigateBasedOnRole('teacher');
-      } else if (email == "admin@example.com" && password == "password") {
-        _navigateBasedOnRole('school_admin');
-      } else if (email == "student@example.com" && password == "password") {
-        _navigateBasedOnRole('student');
-      } else {
+      try {
+        // Get schoolId from storage for verification
+        final storedSchoolId = await StorageUtil.getString('schoolId');
+        
+        if (storedSchoolId == null) {
+          throw Exception('School ID not found. Please select a school again.');
+        }
+        
+        final response = await http.post(
+          Uri.parse('http://localhost:3000/auth/login'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'email': email,
+            'password': password,
+          }),
+        );
+        
+        final responseData = json.decode(response.body);
+        
+        if (response.statusCode == 200 && responseData['success'] == true) {
+          final userData = responseData['data']['user'];
+          final tokens = responseData['data']['tokens'];
+          final responseSchoolId = userData['schoolId']?.toString() ?? '';
+          
+          // Store access token and refresh token for future requests
+          await StorageUtil.setString('accessToken', tokens['accessToken']);
+          await StorageUtil.setString('refreshToken', tokens['refreshToken']);
+          
+          // Verification checks:
+          // 1. Check if the role matches
+          // 2. Check if the schoolId matches
+          bool roleMatches = userData['role'] == _selectedRole;
+          bool schoolIdMatches = responseSchoolId == storedSchoolId;
+          
+          if (!roleMatches) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Access denied: The role does not match your account type'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          } else if (!schoolIdMatches) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Access denied: You are not authorized for this school'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          } else {
+            // Both role and schoolId match, proceed with navigation
+            final user = User(
+              id: userData['id'],
+              email: userData['email'],
+              role: userData['role'],
+              schoolToken: widget.schoolToken,
+              schoolName: widget.schoolName,
+              profile: UserProfile(
+                firstName: userData['name']?.split(' ')[0] ?? 'User',
+                lastName: userData['name']?.split(' ').length > 1 ? userData['name'].split(' ')[1] : '',
+                phone: '123-456-7890', // Default value, update if API provides phone
+                address: '123 School St', // Default value, update if API provides address
+                profilePicture: 'https://randomuser.me/api/portraits/${userData['role'] == 'teacher' ? 'men' : 
+                                                       userData['role'] == 'student' ? 'lego' : 
+                                                       userData['role'] == 'parent' ? 'women' : 'men'}/1.jpg',
+              ),
+            );
+            
+            // Store user information in persistent storage
+            await StorageUtil.setString('userId', user.id);
+            await StorageUtil.setString('userEmail', user.email);
+            await StorageUtil.setString('userRole', user.role);
+            await StorageUtil.setString('userFirstName', user.profile.firstName);
+            await StorageUtil.setString('userLastName', user.profile.lastName);
+            await StorageUtil.setString('userPhone', user.profile.phone);
+            await StorageUtil.setString('userAddress', user.profile.address);
+            await StorageUtil.setString('userProfilePic', user.profile.profilePicture);
+            
+            // Flag to indicate user is logged in
+            await StorageUtil.setBool('isLoggedIn', true);
+            
+            // Navigate based on role, passing the user object
+            _navigateBasedOnRole(userData['role'], user);
+          }
+        } else {
+          String errorMessage = responseData['message'] ?? 'Login failed';
+          
+          // Check for specific error conditions
+          if (response.statusCode == 401) {
+            errorMessage = 'Invalid email or password';
+          } else if (response.statusCode == 403) {
+            errorMessage = 'Your account is not authorized for this school';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Invalid credentials. Please try again.'),
+            content: Text('Login failed: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -184,7 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = false;
     });
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -301,7 +413,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ElevatedButton(
                         onPressed: _isLoading 
                             ? null 
-                            : () => _navigateBasedOnRole(_selectedRole),
+                            : () => _navigateBasedOnRoleDemo(_selectedRole), // Update this call
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(

@@ -7,31 +7,48 @@ import 'school_selection_screen.dart';
 class RoleSelectionScreen extends StatelessWidget {
   final String schoolName;
   final String schoolToken;
+  final String schoolAddress;
+  final String schoolPhone;
   
   const RoleSelectionScreen({
     Key? key, 
     required this.schoolName,
     required this.schoolToken,
+    required this.schoolAddress,
+    required this.schoolPhone,
   }) : super(key: key);
 
   Future<void> _logout(BuildContext context) async {
-    // Clear all school-related stored data
-    print("Clearing school data from SharedPreferences...");
+    // Clear only school-related data, not user data
+    print("Clearing school selection...");
     
-    // Use SharedPreferences directly to remove the keys
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('schoolToken');
-    await prefs.remove('schoolName');
-    await prefs.remove('schoolId');
-    
-    // Verify data was cleared
-    print("Remaining keys after clear: ${prefs.getKeys()}");
-
-    // Navigate back to school selection
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
-    );
+    try {
+      // Use StorageUtil to clear only school-related data
+      await StorageUtil.setString('schoolToken', '');
+      await StorageUtil.setString('schoolName', '');
+      await StorageUtil.setString('schoolId', '');
+      await StorageUtil.setString('schoolAddress', '');
+      await StorageUtil.setString('schoolPhone', '');
+      
+      // Set login status to false (user not logged in)
+      await StorageUtil.setBool('isLoggedIn', false);
+      
+      // Verify data was cleared
+      print("School selection cleared, returning to school selection screen");
+      
+      // Navigate back to school selection
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
+      );
+    } catch (e) {
+      print("Error during school logout: $e");
+      // Still try to navigate even if there was an error
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
+      );
+    }
   }
 
   @override
@@ -40,9 +57,8 @@ class RoleSelectionScreen extends StatelessWidget {
     print("🏫 CURRENT SCHOOL INFO IN ROLE SELECTION:");
     print("🏫 School Name: $schoolName");
     print("🏫 School Token: $schoolToken");
-    
-    // Also print all stored data
-    // StorageUtil.debugPrintAll();
+    print("🏫 School Token: $schoolAddress");
+    print("🏫 School Token: $schoolPhone");
     
     return Scaffold(
       appBar: AppBar(
@@ -164,7 +180,10 @@ class RoleSelectionScreen extends StatelessWidget {
     required Color color,
   }) {
     return ElevatedButton(
-      onPressed: () {
+      onPressed: () async {
+        // Store selected role in local storage
+        await StorageUtil.setString('selectedRole', role);
+        
         Navigator.push(
           context,
           MaterialPageRoute(

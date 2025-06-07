@@ -44,6 +44,7 @@ dependencies:
   fl_chart: ^0.71.0
   shared_preferences: ^2.5.3
   permission_handler: ^11.0.1
+  http: ^1.1.0 # Add this line
 
 dev_dependencies:
   flutter_test:

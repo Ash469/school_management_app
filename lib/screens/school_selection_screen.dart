@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/storage_util.dart';
 import '../utils/app_theme.dart';
 import 'role_selection_screen.dart';
-import '../widgets/debug_storage_viewer.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class SchoolSelectionScreen extends StatefulWidget {
   const SchoolSelectionScreen({Key? key}) : super(key: key);
@@ -18,12 +19,14 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
   bool _isLoading = false;
   List<Map<String, dynamic>> _schools = [];
   String _currentTheme = AppTheme.defaultTheme;
+  bool _isLoadingSchools = false;
+  String _errorMessage = '';
   
   @override
   void initState() {
     super.initState();
     _loadSchools();
-    _checkSharedPreferencesStatus(showErrorDialog: false); // Don't show error dialog on startup
+    _checkSharedPreferencesStatus(showErrorDialog: false); 
     _checkForExistingSchool();
     _loadTheme();
   }
@@ -42,9 +45,6 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
       // Try to read it back
       final readValue = prefs.getString(testKey);
       
-      print('🔍 SharedPreferences Test:');
-      print('🔍 Write value: $testValue');
-      print('🔍 Read value: $readValue');
       print('🔍 SharedPreferences working: ${testValue == readValue}');
       
       if (testValue != readValue && showErrorDialog) {
@@ -117,9 +117,10 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
     try {
       final String? schoolToken = await StorageUtil.getString('schoolToken');
       final String? schoolName = await StorageUtil.getString('schoolName');
+      final String? schoolAddress = await StorageUtil.getString('schoolAddress');
+      final String? schoolPhone = await StorageUtil.getString('schoolPhone');
       
       if (schoolToken != null && schoolName != null) {
-        print("Found existing school: $schoolName");
         // Auto-navigate to the role selection screen if school token exists
         if (mounted) {
           Navigator.pushReplacement(
@@ -128,88 +129,199 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
               builder: (context) => RoleSelectionScreen(
                 schoolName: schoolName,
                 schoolToken: schoolToken,
+                schoolAddress: schoolAddress ?? 'No address available',
+                schoolPhone: schoolPhone ?? 'No phone available',
               ),
             ),
           );
         }
-      } else {
-        print("No existing school found");
       }
     } catch (e) {
-      print("Error checking for existing school: $e");
       // Continue showing the school selection screen
     }
   }
-
-  // Load sample schools for demonstration
-  void _loadSchools() {
-    // In a real app, you would fetch this from an API
+  
+  // Load schools from API
+  Future<void> _loadSchools() async {
     setState(() {
-      _schools = [
-        {'id': 'SCH001', 'name': 'Springfield Elementary School', 'token': 'token_sch001'},
-        {'id': 'SCH002', 'name': 'Westfield High School', 'token': 'token_sch002'},
-        {'id': 'SCH003', 'name': 'Northside Academy', 'token': 'token_sch003'},
-        {'id': 'SCH004', 'name': 'Eastwood Junior College', 'token': 'token_sch004'},
-        {'id': 'SCH005', 'name': 'Central Public School', 'token': 'token_sch005'},
-      ];
+      _isLoadingSchools = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // For Chrome debugging, we can use direct localhost
+      final apiBaseUrl = await StorageUtil.getString('apiBaseUrl') ?? 'http://localhost:3000';
+      final url = '$apiBaseUrl/schools/';
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          "Accept": "application/json",
+          "Access-Control-Allow-Origin": "*", 
+        },
+      ).timeout(const Duration(seconds: 15));
+      
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        
+        if (jsonData['success'] == true && jsonData['data'] != null && jsonData['data']['schools'] != null) {
+          final schoolsData = jsonData['data']['schools'] as List;
+          
+          setState(() {
+            _schools = schoolsData.map((school) => {
+              'id': school['_id'],
+              'name': school['name'],
+              'token': school['token'],
+              'address': school['address'] ?? 'No address available',
+              'phone': school['phone'] ?? 'No phone available',
+            }).toList();
+          });
+        } else {
+          throw Exception('Invalid response format');
+        }
+      } else {
+        throw Exception('Failed to load schools. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load schools. Please check your network connection.';
+        _schools = [];
+      });
+      
+      // Show API configuration dialog if there's an error
+      _showApiConfigDialog(e.toString());
+    } finally {
+      setState(() {
+        _isLoadingSchools = false;
+      });
+    }
+  }
+  
+  // Show dialog to configure API URL
+  void _showApiConfigDialog(String errorMessage) {
+    if (!mounted) return;
+    
+    final apiUrlController = TextEditingController();
+    
+    // Load current API URL if available
+    StorageUtil.getString('apiBaseUrl').then((currentUrl) {
+      apiUrlController.text = currentUrl ?? 'http://localhost:3000';
+    });
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('API Connection Error'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Could not connect to the API server. This might happen because:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('• The server is not running'),
+                  const Text('• CORS policy blocking browser requests'),
+                  const Text('• Network configuration issues'),
+                  const SizedBox(height: 16),
+                  const Text('Error details:'),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      errorMessage,
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('API Configuration:'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: apiUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'API Base URL',
+                      hintText: 'http://localhost:3000',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Note: For Chrome debugging, ensure your backend has CORS enabled.',
+                    style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final newUrl = apiUrlController.text.trim();
+                  if (newUrl.isNotEmpty) {
+                    await StorageUtil.setString('apiBaseUrl', newUrl);
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      // Retry loading schools with new URL
+                      _loadSchools();
+                    }
+                  }
+                },
+                child: const Text('Save & Retry'),
+              ),
+            ],
+          );
+        },
+      );
     });
   }
-
+  
   Future<void> _verifyAndStoreSchool(String schoolId) async {
     setState(() {
       _isLoading = true;
     });
-
-    // Simulate network request
-    await Future.delayed(const Duration(seconds: 1));
-
-    print("Entered school ID: '$schoolId'");
     
     // Find matching school
     final schoolMatch = _schools.firstWhere(
-      (school) => school['id'].toString().trim() == schoolId.trim(),
+      (school) => school['id'].toString() == schoolId.trim(),
       orElse: () => {}, // Empty map if not found
     );
 
-    print("Match found: ${schoolMatch.isNotEmpty}");
-
     // Check if we found a match
     if (schoolMatch.isNotEmpty) {
-      print("📝 SELECTED SCHOOL INFO:");
-      print("📝 School ID: ${schoolMatch['id']}");
-      print("📝 School Name: ${schoolMatch['name']}");
-      print("📝 School Token: ${schoolMatch['token']}");
-
       // Use our storage utility to store the data
       await StorageUtil.setString('schoolToken', schoolMatch['token']);
       await StorageUtil.setString('schoolName', schoolMatch['name']);
       await StorageUtil.setString('schoolId', schoolMatch['id']);
-      
-      // Verify stored data
-      print("✓ VERIFYING STORED DATA:");
-      final storedToken = await StorageUtil.getString('schoolToken');
-      final storedName = await StorageUtil.getString('schoolName');
-      final storedId = await StorageUtil.getString('schoolId');
-      print("✓ Stored School ID: $storedId");
-      print("✓ Stored School Name: $storedName");
-      print("✓ Stored School Token: $storedToken");
+      await StorageUtil.setString('schoolAddress', schoolMatch['address']);
+      await StorageUtil.setString('schoolPhone', schoolMatch['phone']);
       
       if (mounted) {
-        print("Navigating to role selection screen");
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => RoleSelectionScreen(
               schoolName: schoolMatch['name'],
               schoolToken: schoolMatch['token'],
+              schoolAddress: schoolMatch['address'],
+              schoolPhone: schoolMatch['phone'],
             ),
           ),
         );
       }
     } else {
-      // If exact match not found, try partial match
+      // If exact match not found, try partial match by name
       final partialMatches = _schools.where(
-        (school) => school['id'].toString().toLowerCase().contains(schoolId.trim().toLowerCase())
+        (school) => school['name'].toString().toLowerCase().contains(schoolId.trim().toLowerCase())
       ).toList();
       
       if (partialMatches.isNotEmpty) {
@@ -220,21 +332,23 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
         await StorageUtil.setString('schoolToken', match['token']);
         await StorageUtil.setString('schoolName', match['name']);
         await StorageUtil.setString('schoolId', match['id']);
+        await StorageUtil.setString('schoolAddress', match['address']);
+        await StorageUtil.setString('schoolPhone', match['phone']);
 
         if (mounted) {
-          print("Navigating to role selection screen with partial match");
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => RoleSelectionScreen(
                 schoolName: match['name'],
                 schoolToken: match['token'],
+                schoolAddress: match['address'],
+                schoolPhone: match['phone'],
               ),
             ),
           );
         }
       } else if (mounted) {
-        print("No match found - showing error");
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Invalid school ID. Please try again.'),
@@ -361,6 +475,7 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
                                   labelStyle: TextStyle(color: primaryColor),
                                   hintText: 'Enter your school ID (e.g., SCH001)',
                                   hintStyle: TextStyle(color: Colors.grey[400]),
+
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                     borderSide: BorderSide(color: accentColor),
@@ -436,7 +551,7 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
                   const SizedBox(height: 40),
                   // Enhanced demo section label
                   Text(
-                    'Demo School IDs:',
+                    'Available Schools:',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
@@ -446,141 +561,114 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Enhanced school cards with better styling
-                  ...List.generate(_schools.length, (index) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: InkWell(
-                      onTap: () => _schoolIdController.text = _schools[index]['id'],
-                      borderRadius: BorderRadius.circular(12),
-                      splashColor: primaryColor.withOpacity(0.1),
-                      highlightColor: primaryColor.withOpacity(0.05),
-                      child: Card(
-                        color: Colors.white, // Explicitly set color
-                        surfaceTintColor: Colors.white, // Important for Material 3
-                        elevation: 3,
-                        shadowColor: accentColor.withOpacity(0.2),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: accentColor.withOpacity(0.2)),
+                  
+                  // Loading indicator or error message
+                  if (_isLoadingSchools)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: CircularProgressIndicator(color: primaryColor),
+                      ),
+                    )
+                  else if (_errorMessage.isNotEmpty)
+                    Card(
+                      color: Colors.red.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          _errorMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.red.shade800),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: primaryColor.withOpacity(0.1),
-                                child: Icon(
-                                  Icons.school_outlined,
-                                  color: accentColor,
-                                  size: 20,
+                      ),
+                    )
+                  else if (_schools.isEmpty)
+                    Card(
+                      color: Colors.grey.shade50,
+                      child: const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'No schools available at the moment.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    )
+                  // Enhanced school cards with better styling
+                  else 
+                    ...List.generate(_schools.length, (index) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: InkWell(
+                        onTap: () => _schoolIdController.text = _schools[index]['id'],
+                        borderRadius: BorderRadius.circular(12),
+                        splashColor: primaryColor.withOpacity(0.1),
+                        highlightColor: primaryColor.withOpacity(0.05),
+                        child: Card(
+                          color: Colors.white,
+                          surfaceTintColor: Colors.white,
+                          elevation: 3,
+                          shadowColor: accentColor.withOpacity(0.2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: accentColor.withOpacity(0.2)),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: primaryColor.withOpacity(0.1),
+                                  child: Icon(
+                                    Icons.school_outlined,
+                                    color: accentColor,
+                                    size: 20,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${_schools[index]['name']}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: Color(0xFF424242),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${_schools[index]['name']}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          color: Color(0xFF424242),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'ID: ${_schools[index]['id']}',
-                                      style: TextStyle(
-                                        color: accentColor,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'ID: ${_schools[index]['id']}',
+                                        style: TextStyle(
+                                          color: accentColor,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Icon(
-                                Icons.arrow_forward_ios,
-                                size: 16,
-                                color: Colors.grey[400],
-                              ),
-                            ],
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                  color: Colors.grey[400],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  )),
+                    )),
                 ],
               ),
             ),
           ),
         ),
       ),
-      // Add debug button to test storage
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _debugSharedPreferences(),
-        backgroundColor: primaryColor,
-        child: const Icon(Icons.bug_report),
-        tooltip: 'Debug Storage',
-      ),
     );
   }
-  
-  // Debug method to check SharedPreferences
-  Future<void> _debugSharedPreferences() async {
-    try {
-      // Display current SharedPreferences data
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys();
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('SharedPreferences Debug'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Total keys: ${keys.length}'),
-                const Divider(),
-                ...keys.map((key) {
-                  final value = prefs.get(key);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Text('$key: $value', 
-                      style: const TextStyle(fontFamily: 'monospace'),
-                    ),
-                  );
-                }).toList(),
-                const Divider(),
-                const Text('Test write/read:'),
-                ElevatedButton(
-                  onPressed: () async {
-                    await _checkSharedPreferencesStatus(showErrorDialog: true); // Show dialog if test fails
-                    if (mounted) Navigator.pop(context);
-                    _debugSharedPreferences();
-                  },
-                  child: const Text('Test SharedPreferences'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error accessing SharedPreferences: $e')),
-      );
-    }
-  }
+ 
 }
 
 

@@ -10,7 +10,7 @@ import 'school_admin/teacher_management_screen.dart';
 import 'school_admin/student_management_screen.dart';
 import 'school_admin/academic_calender_screen.dart';
 import 'school_admin/event_management_screen.dart';
-import 'school_admin/fee_collection_screen.dart';
+// import 'school_admin/fee_collection_screen.dart';
 import 'school_admin/schedule_management_screen.dart';
 import 'school_admin/notifiaction_management_screen.dart';
 import 'school_admin/analytic_dashboard.dart';
@@ -226,16 +226,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                   widget.user.email,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
-                currentAccountPicture: CircleAvatar(
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    widget.user.profile.firstName[0],
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: _primaryColor),
-                  ),
-                ),
               ),
               ListTile(
                 leading: Icon(Icons.dashboard, color: _accentColor),
@@ -266,10 +256,10 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
               _buildDrawerTile(
                   Icons.family_restroom, 'Parents', _navigateToParents),
               const Divider(),
-              _buildCategoryHeader('FINANCE'),
-              _buildDrawerTile(
-                  Icons.payment, 'Fee Collection', _navigateToFeeManagement),
-              const Divider(),
+              // _buildCategoryHeader('FINANCE'),
+              // _buildDrawerTile(
+              //     Icons.payment, 'Fee Collection', _navigateToFeeManagement),
+              // const Divider(),
               _buildCategoryHeader('COMMUNICATION'),
               _buildDrawerTile(
                   Icons.message, 'Messaging', _navigateToMessaging),
@@ -293,8 +283,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                           child: const Text('Cancel'),
                         ),
                         TextButton(
-                          onPressed: () {
+                          onPressed: () async {
                             Navigator.of(context).pop();
+                            
+                            // Clear all user-related stored data
+                            await _performLogout();
+                            
                             // Navigate to school selection screen after logout
                             Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(
@@ -431,9 +425,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                 case 'Classes':
                   _navigateToClassManagement();
                   break;
-                case 'Fees Due':
-                  _navigateToFeeManagement();
-                  break;
               }
             },
             child: Stack(
@@ -530,12 +521,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
         'label': 'Event',
         'color': Colors.purple,
         'onTap': _navigateToEvents,
-      },
-      {
-        'icon': Icons.payment,
-        'label': 'Fee',
-        'color': Colors.teal,
-        'onTap': _navigateToFeeManagement,
       },
       // {
       //   'icon': Icons.analytics,
@@ -652,13 +637,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
         'time': '2h ago',
         'icon': Icons.person_add,
         'color': _accentColor,
-      },
-      {
-        'title': 'Fee payment received',
-        'description': 'Sarah paid \$500 for Term 1',
-        'time': '3h ago',
-        'icon': Icons.payment,
-        'color': Colors.blue,
       },
       {
         'title': 'New timetable created',
@@ -819,12 +797,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
               title: 'Add Timetable',
               onTap: _navigateToScheduleManagement,
             ),
-            _buildQuickActionTile(
-              icon: Icons.payment,
-              color: _tertiaryColor,
-              title: 'Manage Fees',
-              onTap: _navigateToFeeManagement,
-            ),
+            // _buildQuickActionTile(
+            //   icon: Icons.payment,
+            //   color: _tertiaryColor,
+            //   title: 'Manage Fees',
+            //   onTap: _navigateToFeeManagement,
+            // ),
             _buildQuickActionTile(
               icon: Icons.notifications,
               color: _tertiaryColor,
@@ -981,12 +959,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
     );
   }
 
-  void _navigateToFeeManagement() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const FeeCollectionScreen()),
-    );
-  }
+  // void _navigateToFeeManagement() {
+  //   Navigator.push(
+  //     context,
+  //     MaterialPageRoute(builder: (context) => const FeeCollectionScreen()),
+  //   );
+  // }
 
   void _navigateToEvents() {
     Navigator.push(
@@ -1086,5 +1064,44 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
         ),
       ),
     );
+  }
+
+  // Add this new method to handle logout
+  Future<void> _performLogout() async {
+    try {
+      print('🔐 Performing logout and clearing user data...');
+      
+      // Clear user auth credentials
+      await StorageUtil.setString('accessToken', '');
+      await StorageUtil.setString('refreshToken', '');
+      
+      // Clear user profile information
+      await StorageUtil.setString('userId', '');
+      await StorageUtil.setString('userEmail', '');
+      await StorageUtil.setString('userRole', '');
+      await StorageUtil.setString('userFirstName', '');
+      await StorageUtil.setString('userLastName', '');
+      await StorageUtil.setString('userPhone', '');
+      await StorageUtil.setString('userAddress', '');
+      await StorageUtil.setString('userProfilePic', '');
+      
+      // Clear school-related information
+      await StorageUtil.setString('schoolToken', '');
+      await StorageUtil.setString('schoolName', '');
+      await StorageUtil.setString('schoolId', '');
+      await StorageUtil.setString('schoolAddress', '');
+      await StorageUtil.setString('schoolPhone', '');
+      
+      // Set login status to false
+      await StorageUtil.setBool('isLoggedIn', false);
+      
+      print('🔐 Logout completed. All user data cleared.');
+      
+      // Optional: Dump storage to verify everything was cleared
+      await StorageUtil.debugDumpAll();
+      
+    } catch (e) {
+      print('⚠️ Error during logout: $e');
+    }
   }
 }

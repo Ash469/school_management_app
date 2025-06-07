@@ -13,9 +13,7 @@ void main() async {
   
   try {
     // Initialize StorageUtil and show status
-    print('🔄 Initializing storage utilities...');
     final storageInitialized = await StorageUtil.init();
-    print('🔍 StorageUtil initialized: $storageInitialized');
     
     // Force a write to verify storage is working
     await StorageUtil.setString('app_initialized', DateTime.now().toString());
