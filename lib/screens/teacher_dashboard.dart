@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../utils/app_theme.dart';
+import '../services/schedule_service.dart';
 import 'teachers/teacher_classes_screen.dart';
 import 'teachers/teacher_assignments_screen.dart';
 import 'teachers/teacher_attendance_screen.dart';
 import 'teachers/teacher_grading_screen.dart';
 import 'teachers/teacher_notifications_screen.dart';
+import 'teachers/teacher_profile_screen.dart';
 import 'package:intl/intl.dart';
-import 'login_screen.dart'; // Add this import for the LoginScreen
-import 'school_selection_screen.dart'; // Import the SchoolSelectionScreen
+import 'school_selection_screen.dart';
 
 class TeacherDashboard extends StatefulWidget {
   final User user;
@@ -25,11 +26,13 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   late Color _tertiaryColor;
   late List<Color> _gradientColors;
   bool _isLoading = true;
-  List<Class> _todaysClasses = [];
+  List<Map<String, dynamic>> _todaysClasses = [];
+  late ScheduleService _scheduleService;
 
   @override
   void initState() {
     super.initState();
+    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
     _loadThemeColors();
     _loadTodaysClasses();
   }
@@ -47,57 +50,96 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     });
 
     try {
-      // Mock data - in a real app, this would come from an API
-      final weekday = DateFormat('EEEE').format(DateTime.now());
+      // Get current day of week (Monday = 1, Sunday = 7)
+      final now = DateTime.now();
+      final currentDayOfWeek = now.weekday;
+      final dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      final todayName = dayNames[currentDayOfWeek - 1];
       
-      // Simulate API call delay
-      await Future.delayed(const Duration(seconds: 1));
+      print('📅 Loading schedule for teacher ID: ${widget.user.id}');
+      print('📅 Today is: $todayName (day $currentDayOfWeek)');
+
+      // Fetch teacher's schedule from API
+      final teacherScheduleResponse = await _scheduleService.getTeacherSchedule(widget.user.id);
       
-      final mockClasses = [
-        Class(
-          id: '1',
-          name: 'Mathematics',
-          grade: '10',
-          section: 'A',
-          subject: 'Math',
-          startTime: '09:00 AM',
-          endTime: '10:00 AM',
-          roomNumber: '101',
-          weekday: weekday,
-        ),
-        Class(
-          id: '2',
-          name: 'Science',
-          grade: '10',
-          section: 'B',
-          subject: 'Physics',
-          startTime: '11:00 AM',
-          endTime: '12:00 PM',
-          roomNumber: '102',
-          weekday: weekday,
-        ),
-        Class(
-          id: '3',
-          name: 'English',
-          grade: '9',
-          section: 'C',
-          subject: 'Literature',
-          startTime: '01:00 PM',
-          endTime: '02:00 PM',
-          roomNumber: '103',
-          weekday: weekday,
-        ),
-      ];
+      // Extract today's classes from the schedule
+      List<Map<String, dynamic>> todaysClasses = [];
+      
+      if (teacherScheduleResponse != null) {
+        print('📅 Full response: $teacherScheduleResponse');
+        
+        // Handle the nested structure where data contains an array of schedule objects
+        dynamic scheduleData;
+        if (teacherScheduleResponse.containsKey('data') && teacherScheduleResponse['data'] is List) {
+          scheduleData = teacherScheduleResponse['data'] as List<dynamic>;
+        } else if (teacherScheduleResponse is List) {
+          scheduleData = teacherScheduleResponse as List<dynamic>;
+        } else {
+          // Single schedule object
+          scheduleData = [teacherScheduleResponse];
+        }
+        
+        // Process each schedule object
+        for (var scheduleObj in scheduleData) {
+          if (scheduleObj is Map<String, dynamic> && scheduleObj.containsKey('periods')) {
+            final periods = scheduleObj['periods'] as List<dynamic>;
+            final classInfo = scheduleObj['classId'] as Map<String, dynamic>?;
+            
+            print('📅 Processing ${periods.length} periods for class: ${classInfo?['name']}');
+            
+            for (var period in periods) {
+              if (period is Map<String, dynamic>) {
+                final dayOfWeek = period['dayOfWeek']?.toString();
+                
+                print('📅 Checking period: day=$dayOfWeek, subject=${period['subject']}, time=${period['startTime']}-${period['endTime']}');
+                
+                // Check if this period is for today
+                if (dayOfWeek == todayName) {
+                  print('📅 Found matching day: $dayOfWeek');
+                  
+                  // Extract teacher info
+                  final teacherInfo = period['teacherId'] as Map<String, dynamic>?;
+                  
+                  todaysClasses.add({
+                    'id': period['_id'] ?? scheduleObj['_id'] ?? '',
+                    'subject': period['subject']?.toString() ?? 'Unknown Subject',
+                    'startTime': period['startTime']?.toString() ?? '',
+                    'endTime': period['endTime']?.toString() ?? '',
+                    'classId': classInfo?['_id']?.toString() ?? '',
+                    'className': '${classInfo?['name'] ?? 'Unknown Class'} - Grade ${classInfo?['grade']}${classInfo?['section']}',
+                    'roomNumber': period['room']?.toString() ?? period['roomNumber']?.toString() ?? 'TBA',
+                    'teacherId': teacherInfo?['_id']?.toString() ?? '',
+                    'teacherName': teacherInfo?['name']?.toString() ?? '',
+                    'day': dayOfWeek,
+                    'periodNumber': period['periodNumber']?.toString() ?? '',
+                    'grade': classInfo?['grade']?.toString() ?? '',
+                    'section': classInfo?['section']?.toString() ?? '',
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Sort classes by start time
+      todaysClasses.sort((a, b) {
+        final timeA = a['startTime']?.toString() ?? '';
+        final timeB = b['startTime']?.toString() ?? '';
+        return timeA.compareTo(timeB);
+      });
 
       setState(() {
-        _todaysClasses = mockClasses;
+        _todaysClasses = todaysClasses;
         _isLoading = false;
       });
+      
+      print('📅 Found ${todaysClasses.length} classes for today: $todaysClasses');
     } catch (e) {
-      // Handle errors
-      print('Error loading classes: $e');
+      print('📅 Error loading teacher schedule: $e');
       setState(() {
         _isLoading = false;
+        _todaysClasses = [];
       });
     }
   }
@@ -170,7 +212,12 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: () {
-                      // Show profile
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TeacherProfileScreen(user: widget.user),
+                        ),
+                      );
                     },
                     child: Text(
                       widget.user.profile.firstName[0],
@@ -206,8 +253,19 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   widget.user.email,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
-                currentAccountPicture: CircleAvatar(
-                  backgroundImage: NetworkImage(widget.user.profile.profilePicture),
+                currentAccountPicture: GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TeacherProfileScreen(user: widget.user),
+                      ),
+                    );
+                  },
+                  child: CircleAvatar(
+                    backgroundImage: NetworkImage(widget.user.profile.profilePicture),
+                  ),
                 ),
               ),
               ListTile(
@@ -224,6 +282,26 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                 selectedTileColor: _accentColor.withOpacity(0.1),
                 onTap: () {
                   Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.person, color: Colors.grey),
+                ),
+                title: const Text('My Profile'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TeacherProfileScreen(user: widget.user),
+                    ),
+                  );
                 },
               ),
               const Divider(height: 1),
@@ -265,7 +343,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   ),
                   child: const Icon(Icons.assignment, color: Colors.green),
                 ),
-                title: const Text('Assignments'),
+                title: const Text('Homework'),  
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -532,13 +610,33 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       return Card(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: const Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Center(
-            child: Text(
-              'No classes scheduled for today',
-              style: TextStyle(fontSize: 16),
-            ),
+        child: Container(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            children: [
+              Icon(
+                Icons.free_breakfast,
+                size: 48,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No classes scheduled for today',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Enjoy your free day!',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -550,6 +648,45 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       itemCount: _todaysClasses.length,
       itemBuilder: (context, index) {
         final classItem = _todaysClasses[index];
+        final startTime = classItem['startTime']?.toString() ?? '';
+        final endTime = classItem['endTime']?.toString() ?? '';
+        
+        // Format time display
+        String timeDisplay = '';
+        if (startTime.isNotEmpty && endTime.isNotEmpty) {
+          timeDisplay = '$startTime - $endTime';
+        } else if (startTime.isNotEmpty) {
+          timeDisplay = startTime;
+        }
+
+        // Determine if class is current, upcoming, or completed
+        final now = DateTime.now();
+        Color statusColor = Colors.grey;
+        String statusText = '';
+        
+        try {
+          if (startTime.isNotEmpty) {
+            // Parse time (assuming format like "09:00" or "9:00 AM")
+            final startDateTime = _parseTimeToDateTime(startTime);
+            final endDateTime = endTime.isNotEmpty ? _parseTimeToDateTime(endTime) : null;
+            
+            if (endDateTime != null && now.isAfter(endDateTime)) {
+              statusColor = Colors.green;
+              statusText = 'Completed';
+            } else if (now.isAfter(startDateTime) && (endDateTime == null || now.isBefore(endDateTime))) {
+              statusColor = Colors.orange;
+              statusText = 'In Progress';
+            } else {
+              statusColor = Colors.blue;
+              statusText = 'Upcoming';
+            }
+          }
+        } catch (e) {
+          // Handle time parsing errors
+          statusColor = Colors.grey;
+          statusText = 'Scheduled';
+        }
+
         return Card(
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -559,37 +696,156 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: _accentColor.withOpacity(0.2),
+                color: statusColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.class_, color: _accentColor),
+              child: Icon(Icons.class_, color: statusColor),
             ),
             title: Text(
-              classItem.name,
+              classItem['subject']?.toString() ?? 'Unknown Subject',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Grade ${classItem.grade}-${classItem.section}',
-                  style: TextStyle(color: Colors.black87),
-                ),
-                Text(
-                  'Room ${classItem.roomNumber} • ${classItem.startTime} - ${classItem.endTime}',
-                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                if (classItem['className']?.toString().isNotEmpty == true)
+                  Text(
+                    classItem['className'].toString(),
+                    style: const TextStyle(color: Colors.black87),
+                  ),
+                Row(
+                  children: [
+                    if (classItem['roomNumber']?.toString().isNotEmpty == true) ...[
+                      Icon(Icons.room, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Room ${classItem['roomNumber']}',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
+                    if (timeDisplay.isNotEmpty) ...[
+                      if (classItem['roomNumber']?.toString().isNotEmpty == true)
+                        Text(' • ', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        timeDisplay,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
-            trailing: IconButton(
-              icon: Icon(Icons.arrow_forward_ios, size: 16, color: _primaryColor),
-              onPressed: () {
-                // Navigate to class details
-              },
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: statusColor.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Icon(Icons.arrow_forward_ios, size: 16, color: _primaryColor),
+              ],
             ),
+            onTap: () {
+              // Navigate to class details or show more info
+              _showClassDetails(classItem);
+            },
           ),
         );
       },
+    );
+  }
+
+  DateTime _parseTimeToDateTime(String timeString) {
+    try {
+      final now = DateTime.now();
+      
+      // Handle different time formats
+      if (timeString.contains('AM') || timeString.contains('PM')) {
+        // 12-hour format like "9:00 AM"
+        final format = DateFormat('h:mm a');
+        final time = format.parse(timeString);
+        return DateTime(now.year, now.month, now.day, time.hour, time.minute);
+      } else {
+        // 24-hour format like "09:00"
+        final parts = timeString.split(':');
+        if (parts.length >= 2) {
+          final hour = int.parse(parts[0]);
+          final minute = int.parse(parts[1]);
+          return DateTime(now.year, now.month, now.day, hour, minute);
+        }
+      }
+    } catch (e) {
+      print('Error parsing time: $timeString - $e');
+    }
+    
+    // Fallback to current time
+    return DateTime.now();
+  }
+
+  void _showClassDetails(Map<String, dynamic> classItem) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(classItem['subject']?.toString() ?? 'Class Details'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (classItem['className']?.toString().isNotEmpty == true)
+                _buildDetailRow('Class', classItem['className'].toString()),
+              if (classItem['roomNumber']?.toString().isNotEmpty == true)
+                _buildDetailRow('Room', classItem['roomNumber'].toString()),
+              if (classItem['startTime']?.toString().isNotEmpty == true)
+                _buildDetailRow('Start Time', classItem['startTime'].toString()),
+              if (classItem['endTime']?.toString().isNotEmpty == true)
+                _buildDetailRow('End Time', classItem['endTime'].toString()),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
     );
   }
 
@@ -614,7 +870,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         ),
         _buildDashboardCard(
           context: context,
-          title: 'Assignments',
+          title: 'Homework',
           icon: Icons.assignment,
           color: Colors.green,
           onTap: () => Navigator.push(

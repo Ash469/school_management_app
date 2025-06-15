@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
+import '../../models/form_model.dart';
+import '../../services/form_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/constants.dart';
 import 'package:intl/intl.dart';
 
 class FormsScreen extends StatefulWidget {
@@ -14,12 +17,25 @@ class FormsScreen extends StatefulWidget {
 
 class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _isFormsLoaded = false;
   List<Map<String, dynamic>> _submittedForms = [];
+  List<FormType> _formTypesList = [];
+  
+  // Services
+  final FormService _formService = FormService(baseUrl: Constants.apiBaseUrl);
   
   // Theme colors
   late Color _accentColor;
   late List<Color> _gradientColors;
+  
+  // Form types mapping - display name to code
+  final Map<String, String> _formTypeMapping = {
+    'Leave Request': 'leave_request',
+    'Event Participation': 'event_participation',
+    'Feedback': 'feedback',
+    'Other Request': 'other'
+  };
   
   // Form fields
   final _formKey = GlobalKey<FormState>();
@@ -27,14 +43,7 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
   final _descriptionController = TextEditingController();
   String _selectedFormType = 'Leave Request';
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
-  final List<String> _formTypes = [
-    'Leave Request', 
-    'Event Participation', 
-    'Permission Slip',
-    'Feedback Form',
-    'Curriculum Change Request',
-    'Resources Request'
-  ];
+  List<String> _formTypes = [];
 
   @override
   void initState() {
@@ -42,15 +51,40 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
     _tabController = TabController(length: 2, vsync: this);
     _loadThemeColors();
     
-    // Simulate loading data
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _loadSubmittedForms();
-        });
-      }
+    // Initialize form types from the predefined mapping
+    _initializeFormTypes();
+    
+    // Delay adding the listener to prevent it from firing immediately on initialization
+    Future.microtask(() {
+      _tabController.addListener(_handleTabChange);
     });
+  }
+  
+  // Initialize form types locally instead of calling the API
+  void _initializeFormTypes() {
+    // Use the form type mapping keys to populate the dropdown
+    _formTypes = _formTypeMapping.keys.toList();
+    
+    // Set default selected form type
+    if (_formTypes.isNotEmpty) {
+      _selectedFormType = _formTypes[0];
+    }
+    
+    // Create FormType objects for internal use
+    _formTypesList = _formTypes.map((type) => FormType(
+      id: '${_formTypes.indexOf(type) + 1}',
+      name: type,
+      code: _formTypeMapping[type] ?? 'other',
+      description: 'Request',
+    )).toList();
+  }
+  
+  void _handleTabChange() {
+    // Only load forms when the user explicitly switches to the My Forms tab
+    if (_tabController.index == 1 && !_isFormsLoaded && _tabController.indexIsChanging) {
+      // Only load forms when the user clicks on "My Forms" tab
+      _loadStudentForms();
+    }
   }
 
   void _loadThemeColors() {
@@ -58,110 +92,243 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
     _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
   }
   
-  void _loadSubmittedForms() {
-    // Mock data - in a real app, this would come from an API
-    _submittedForms = [
-      {
-        'id': 'F-2023-001',
-        'title': 'Sick Leave Request',
-        'type': 'Leave Request',
-        'description': 'Not feeling well due to fever and cold.',
-        'submissionDate': DateTime.now().subtract(const Duration(days: 5)),
-        'requestedDate': DateTime.now().subtract(const Duration(days: 3)),
-        'status': 'Approved',
-        'responseMessage': 'Approved. Get well soon!',
-        'responder': 'Mr. Williams'
-      },
-      {
-        'id': 'F-2023-002',
-        'title': 'Science Fair Participation',
-        'type': 'Event Participation',
-        'description': 'Request to participate in the Annual Science Fair with my project on Renewable Energy.',
-        'submissionDate': DateTime.now().subtract(const Duration(days: 10)),
-        'requestedDate': DateTime.now().add(const Duration(days: 15)),
-        'status': 'Approved',
-        'responseMessage': 'Approved. Looking forward to your project!',
-        'responder': 'Ms. Garcia'
-      },
-      {
-        'id': 'F-2023-003',
-        'title': 'Field Trip Permission',
-        'type': 'Permission Slip',
-        'description': 'Permission to attend the Natural History Museum field trip.',
-        'submissionDate': DateTime.now().subtract(const Duration(days: 2)),
-        'requestedDate': DateTime.now().add(const Duration(days: 7)),
-        'status': 'Pending',
-        'responseMessage': '',
-        'responder': ''
-      },
-      {
-        'id': 'F-2023-004',
-        'title': 'Library Resources Request',
-        'type': 'Resources Request',
-        'description': 'Request for access to advanced mathematics textbooks for project research.',
-        'submissionDate': DateTime.now().subtract(const Duration(days: 3)),
-        'requestedDate': DateTime.now(),
-        'status': 'Rejected',
-        'responseMessage': 'These resources are only available for senior students. Please contact your math teacher for alternatives.',
-        'responder': 'Mrs. Johnson'
-      },
-    ];
+  
+  Future<void> _loadStudentForms() async {
+    setState(() {
+      _isLoading = true;
+      _isFormsLoaded = true; // Mark forms as loaded to prevent duplicate requests
+    });
+    
+    print('📋 Loading forms for student: ${widget.user.id}');
+    
+    try {
+      final response = await _formService.getStudentForms(widget.user.id);
+      
+      if (response.success && response.data != null) {
+        final List<dynamic> formsJson = response.data;
+        print('📋 Received ${formsJson.length} forms from API');
+        
+        final List<FormData> forms = [];
+        
+        // Process each form with error handling
+        for (var json in formsJson) {
+          try {
+            final form = FormData.fromJson(json);
+            forms.add(form);
+            print('📋 Parsed form: ${form.id} - ${form.type} - ${form.status}');
+          } catch (e) {
+            print('Error parsing form data: $e');
+            // Continue processing other forms even if one fails
+          }
+        }
+        
+        // Convert FormData objects to the UI format
+        _submittedForms = [];
+        for (var form in forms) {
+          try {
+            final uiMap = form.toUIMap();
+            _submittedForms.add(uiMap);
+            print('📋 Added form to UI: ${uiMap['id']} - ${uiMap['status']}');
+          } catch (e) {
+            print('Error converting form to UI map: $e');
+            // Continue processing other forms
+          }
+        }
+        
+        print('📋 Total forms for UI: ${_submittedForms.length}');
+      } else {
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load forms: ${response.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        
+        // Use empty list if API fails
+        _submittedForms = [];
+      }
+    } catch (e) {
+      // Handle error
+      print('Error loading student forms: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading forms: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      
+      // Use empty list if API fails
+      _submittedForms = [];
+    }
+    
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
   
-  void _submitForm() {
+  Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
       // Show loading indicator
       setState(() {
         _isLoading = true;
       });
       
-      // Simulate form submission delay
-      Future.delayed(const Duration(seconds: 1), () {
-        // Create new form submission
-        final newForm = {
-          'id': 'F-2023-${_submittedForms.length + 1}'.padLeft(10, '0'),
-          'title': _titleController.text,
-          'type': _selectedFormType,
-          'description': _descriptionController.text,
-          'submissionDate': DateTime.now(),
-          'requestedDate': _selectedDate,
-          'status': 'Pending',
-          'responseMessage': '',
-          'responder': ''
-        };
+      // Get the form type code from mapping or from API response
+      String formTypeCode;
+      
+      // First try to get code from API response
+      if (_formTypesList.isNotEmpty) {
+        final selectedType = _formTypesList.firstWhere(
+          (type) => type.name == _selectedFormType,
+          orElse: () => FormType(
+            id: '1', 
+            name: _selectedFormType, 
+            code: _formTypeMapping[_selectedFormType] ?? 'other',
+            description: 'Request',
+          ),
+        );
+        formTypeCode = selectedType.code;
+      } else {
+        // If API hasn't provided types, use our mapping
+        formTypeCode = _formTypeMapping[_selectedFormType] ?? 'other';
+      }
+      
+      // Prepare form data based on type
+      Map<String, dynamic> formData = {
+        'title': _titleController.text,
+        'description': _descriptionController.text,
+        'date': DateFormat('yyyy-MM-dd').format(_selectedDate),
+      };
+      
+      // Additional fields based on form type
+      if (formTypeCode == 'leave_request') {
+        formData['reason'] = _titleController.text;
+        formData['startDate'] = DateFormat('yyyy-MM-dd').format(_selectedDate);
+        formData['endDate'] = DateFormat('yyyy-MM-dd').format(
+          _selectedDate.add(const Duration(days: 1))
+        );
+      }
+      
+      try {
+        final response = await _formService.submitForm(
+          studentId: widget.user.id,
+          type: formTypeCode,
+          data: formData,
+        );
         
-        // Add to submitted forms list
-        setState(() {
-          _submittedForms.add(newForm);
-          _isLoading = false;
+        if (response.success && response.data != null) {
+          // Reset the forms loaded flag so we fetch fresh data next time
+          _isFormsLoaded = false;
           
-          // Reset form fields
-          _titleController.clear();
-          _descriptionController.clear();
-          _selectedFormType = 'Leave Request';
-          _selectedDate = DateTime.now().add(const Duration(days: 1));
+          try {
+            // Create new form from response
+            final newFormData = FormData.fromJson(response.data);
+            
+            // Check if FormData was created successfully
+            if (newFormData != null) {
+              final newForm = newFormData.toUIMap();
+              
+              setState(() {
+                // Only add form if it's valid
+                if (newForm.containsKey('id') && newForm['id'] != null) {
+                  _submittedForms.add(newForm);
+                }
+                _isLoading = false;
+                
+                // Reset form fields
+                _titleController.clear();
+                _descriptionController.clear();
+                _selectedFormType = _formTypes.isNotEmpty ? _formTypes[0] : 'Leave Request';
+                _selectedDate = DateTime.now().add(const Duration(days: 1));
+                
+                // Switch to My Forms tab
+                _tabController.animateTo(1);
+                
+                // Show success message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Form submitted successfully!'),
+                    backgroundColor: Colors.green,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+              });
+            } else {
+              setState(() {
+                _isLoading = false;
+              });
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Error processing form data. Please try again.'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          } catch (parseError) {
+            print('Error parsing form data: $parseError');
+            setState(() {
+              _isLoading = false;
+            });
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error processing form: ${parseError.toString()}'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
           
-          // Switch to status tab
-          _tabController.animateTo(1);
+          // Load the forms after submission with a small delay to ensure database update
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _loadStudentForms();
+          });
+        } else {
+          setState(() {
+            _isLoading = false;
+          });
           
-          // Show success message
+          // Show error message
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Form submitted successfully!'),
-              backgroundColor: Colors.green,
+              content: Text('Failed to submit form: ${response.message}'),
+              backgroundColor: Colors.red,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
           );
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
         });
-      });
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
     }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -189,19 +356,24 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
             indicatorColor: Colors.white,
             tabs: const [
               Tab(text: 'Submit Form'),
-              Tab(text: 'Request Status'),
+              Tab(text: 'My Forms'),  // Renamed from "Request Status" to "My Forms"
             ],
           ),
         ),
-        body: _isLoading 
-          ? Center(child: CircularProgressIndicator(color: _accentColor))
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildSubmitFormTab(),
-                _buildRequestStatusTab(),
-              ],
-            ),
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            // First tab - Submit Form
+            _isLoading && _tabController.index == 0
+              ? Center(child: CircularProgressIndicator(color: _accentColor))
+              : _buildSubmitFormTab(),
+            
+            // Second tab - My Forms
+            _isLoading && _tabController.index == 1
+              ? Center(child: CircularProgressIndicator(color: _accentColor))
+              : _buildRequestStatusTab(),
+          ],
+        ),
       ),
     );
   }
@@ -388,7 +560,56 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
   }
 
   Widget _buildRequestStatusTab() {
+    // Only try to load forms if we're actively viewing this tab
+    if (!_isFormsLoaded && _tabController.index == 1) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.refresh,
+              size: 60,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Tap to load your forms',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadStudentForms,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accentColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: const Text(
+                'Load Forms',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: _accentColor),
+      );
+    }
+    
+    print('📋 Forms to display: ${_submittedForms.length}');
+    
     if (_submittedForms.isEmpty) {
+      // Show empty state when no forms are found
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -409,24 +630,64 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
             ),
             const SizedBox(height: 8),
             Text(
-              'Submit a form to see its status here',
+              'Submit a form to see it here',
               style: TextStyle(
                 color: Colors.grey[600],
               ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    _tabController.animateTo(0); // Switch to Submit Form tab
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _accentColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  child: const Text(
+                    'Create New Form',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  onPressed: _loadStudentForms,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[300],
+                    foregroundColor: Colors.black87,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _submittedForms.length,
-      itemBuilder: (context, index) {
-        final form = _submittedForms[index];
-        return _buildRequestCard(form);
-      },
-    );
+    // Show list of forms
+    return RefreshIndicator(
+      onRefresh: _loadStudentForms,
+      color: _accentColor,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _submittedForms.length,
+        itemBuilder: (context, index) {
+          final form = _submittedForms[index];
+          return _buildRequestCard(form);
+        },
+      ),
+      );
   }
   
   Widget _buildRequestCard(Map<String, dynamic> form) {
@@ -575,7 +836,7 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
           ),
         ),
       ),
-    );
+      );
   }
 
   Widget _buildSectionHeader(String title) {
@@ -742,18 +1003,7 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.pop(context);
-                            // Simulate cancellation
-                            setState(() {
-                              final index = _submittedForms.indexOf(form);
-                              _submittedForms.removeAt(index);
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Request cancelled successfully'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
+                            _cancelForm(form);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
@@ -773,25 +1023,7 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.pop(context);
-                            // Create duplicate request with new ID and pending status
-                            final newForm = Map<String, dynamic>.from(form);
-                            newForm['id'] = 'F-2023-${_submittedForms.length + 1}'.padLeft(10, '0');
-                            newForm['submissionDate'] = DateTime.now();
-                            newForm['status'] = 'Pending';
-                            newForm['responseMessage'] = '';
-                            newForm['responder'] = '';
-                            
-                            setState(() {
-                              _submittedForms.add(newForm);
-                            });
-                            
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Request submitted again successfully'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                            _submitAgain(form);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _accentColor,
@@ -808,7 +1040,7 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
                   ],
                 ),
               ),
-            );
+              );
           },
         );
       },
@@ -839,5 +1071,166 @@ class _FormsScreenState extends State<FormsScreen> with SingleTickerProviderStat
         ],
       ),
     );
+  }
+  
+  Future<void> _cancelForm(Map<String, dynamic> form) async {
+    try {
+      Navigator.pop(context);
+      setState(() {
+        _isLoading = true;
+      });
+      
+      // Get form ID from the form map
+      final String formId = form['id'];
+      
+      // Call API to update form status to cancelled
+      final response = await _formService.updateFormStatus(
+        formId: formId,
+        status: 'cancelled',
+        reviewComment: 'Cancelled by student',
+      );
+      
+      setState(() {
+        _isLoading = false;
+      });
+      
+      if (response.success) {
+        // Mark forms as not loaded to force a refresh
+        _isFormsLoaded = false;
+        
+        // Update the local state
+        setState(() {
+          final index = _submittedForms.indexWhere((f) => f['id'] == formId);
+          if (index != -1) {
+            _submittedForms.removeAt(index);
+          }
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request cancelled successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Refresh forms list
+        _loadStudentForms();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel request: ${response.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error cancelling request: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  
+  Future<void> _submitAgain(Map<String, dynamic> form) async {
+    try {
+      Navigator.pop(context);
+      setState(() {
+        _isLoading = true;
+      });
+      
+      // Get form type code from mapping or from existing form
+      String formTypeCode;
+      
+      // First try to get code from API response
+      if (_formTypesList.isNotEmpty) {
+        final selectedType = _formTypesList.firstWhere(
+          (type) => type.name == form['type'],
+          orElse: () => FormType(
+            id: '1', 
+            name: form['type'], 
+            code: _formTypeMapping[form['type']] ?? 'other',
+            description: 'Request',
+          ),
+        );
+        formTypeCode = selectedType.code;
+      } else {
+        // If API hasn't provided types, use our mapping
+        formTypeCode = _formTypeMapping[form['type']] ?? 'other';
+      }
+      
+      // Prepare form data based on existing form
+      Map<String, dynamic> formData = {
+        'title': form['title'],
+        'description': form['description'],
+        'date': DateFormat('yyyy-MM-dd').format(form['requestedDate']),
+      };
+      
+      // Additional fields based on form type
+      if (formTypeCode == 'leave_request') {
+        formData['reason'] = form['title'];
+        formData['startDate'] = DateFormat('yyyy-MM-dd').format(form['requestedDate']);
+        formData['endDate'] = DateFormat('yyyy-MM-dd').format(
+          form['requestedDate'].add(const Duration(days: 1))
+        );
+      }
+      
+      // Submit new form with the same data
+      final response = await _formService.submitForm(
+        studentId: widget.user.id,
+        type: formTypeCode,
+        data: formData,
+      );
+      
+      setState(() {
+        _isLoading = false;
+      });
+      
+      if (response.success) {
+        // Mark forms as not loaded to force a refresh
+        _isFormsLoaded = false;
+        
+        // Create new form from response
+        final newFormData = FormData.fromJson(response.data);
+        final newForm = newFormData.toUIMap();
+        
+        setState(() {
+          _submittedForms.add(newForm);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request submitted again successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Refresh forms list
+        _loadStudentForms();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit request: ${response.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error submitting request: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

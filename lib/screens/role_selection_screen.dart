@@ -51,14 +51,42 @@ class RoleSelectionScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _logStoredValues() async {
+    try {
+      print("📱 READING ALL STORED SCHOOL VALUES FROM SHAREDPREFERENCES:");
+      
+      final schoolToken = await StorageUtil.getString('schoolToken') ?? '';
+      final schoolName = await StorageUtil.getString('schoolName') ?? '';
+      final schoolId = await StorageUtil.getString('schoolId') ?? '';
+      final schoolAddress = await StorageUtil.getString('schoolAddress') ?? '';
+      final schoolPhone = await StorageUtil.getString('schoolPhone') ?? '';
+      final schoolSecretKey = await StorageUtil.getString('schoolSecretKey') ?? '';
+      final schoolTeachers = await StorageUtil.getString('schoolTeachers') ?? '';
+      final schoolStudents = await StorageUtil.getString('schoolStudents') ?? '';
+      final schoolClasses = await StorageUtil.getString('schoolClasses') ?? '';
+      final schoolParents = await StorageUtil.getString('schoolParents') ?? '';
+      
+      print("✅ schoolToken: $schoolToken");
+      print("✅ schoolName: $schoolName");
+      print("✅ schoolId: $schoolId");
+      print("✅ schoolAddress: $schoolAddress");
+      print("✅ schoolPhone: $schoolPhone");
+      print("✅ schoolSecretKey: $schoolSecretKey");
+      print("✅ schoolTeachers: $schoolTeachers");
+      print("✅ schoolStudents: $schoolStudents");
+      print("✅ schoolClasses: $schoolClasses");
+      print("✅ schoolParents: $schoolParents");
+      print("📱 END OF STORED VALUES");
+    } catch (e) {
+      print("❌ Error reading stored values: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Print school info when the screen builds
-    print("🏫 CURRENT SCHOOL INFO IN ROLE SELECTION:");
-    print("🏫 School Name: $schoolName");
-    print("🏫 School Token: $schoolToken");
-    print("🏫 School Token: $schoolAddress");
-    print("🏫 School Token: $schoolPhone");
+    
+    // Log all stored values from SharedPreferences
+    _logStoredValues();
     
     return Scaffold(
       appBar: AppBar(

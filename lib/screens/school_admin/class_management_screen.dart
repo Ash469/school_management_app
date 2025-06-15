@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/class_services.dart';
+import '../../services/teacher_service.dart'; // Import TeacherService
 import '../../utils/storage_util.dart'; // Make sure this is imported
 
 class ClassManagementScreen extends StatefulWidget {
   final User user;
   
-  const ClassManagementScreen({Key? key, required this.user}) : super(key: key);
+  const ClassManagementScreen({super.key, required this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _ClassManagementScreenState createState() => _ClassManagementScreenState();
 }
 
@@ -38,8 +40,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   // Theme colors from app_theme.dart
   late Color _primaryColor;
   late Color _accentColor;
-  late Color _tertiaryColor;
-  late List<Color> _gradientColors;
   late List<Color> _cardColors;
 
   @override
@@ -53,8 +53,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   void _loadThemeColors() {
     _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
     _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
-    _tertiaryColor = AppTheme.getTertiaryColor(AppTheme.defaultTheme);
-    _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
     _cardColors = [
       const Color(0xFFE3F2FD), // Vibrant blue shade
       const Color(0xFFE0F2F1), // Vibrant teal shade
@@ -945,33 +943,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                 ],
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: gradientColors[0].withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                '${classData.containsKey('students') ? classData['students'].toString() : 
-                                  (classData.containsKey('studentCount') ? classData['studentCount'].toString() : '0')} students',
-                                style: TextStyle(
-                                  color: gradientColors[0],
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                       ),
-                      // Body section
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
@@ -1278,258 +1252,266 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     }
   }
   
-  void _showManageStudentsDialog(Map<String, dynamic> classData) {
-    // Ensure we have studentData, even if empty
-    if (!classData.containsKey('studentsData')) {
-      classData['studentsData'] = <Map<String, dynamic>>[];
-    }
+  void _showManageStudentsDialog(Map<String, dynamic> classData) async {
+    // Show loading state
+    setState(() => _isLoading = true);
     
-    List<Map<String, dynamic>> students = List<Map<String, dynamic>>.from(classData['studentsData']);
-    
-    // Controllers for adding new students
-    final nameController = TextEditingController();
-    final idController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _primaryColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
+    try {
+      final String classId = classData['_id'] ?? classData['id'];
+      final schoolId = await StorageUtil.getString('schoolId');
+      
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found. Please log in again.');
+      }
+      
+      // Fetch students data from API using the new method
+      final List<Map<String, dynamic>> students = await _classService.getAllStudentsForClass(classId);
+      
+      setState(() => _isLoading = false);
+      
+      // Controller for searching students
+      final searchController = TextEditingController();
+      List<Map<String, dynamic>> filteredStudents = List.from(students);
+      
+      showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: _primaryColor,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Class Students - ${classData['name']}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Manage Students - ${classData['name']}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              color: Colors.white,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-                    child: Column(
-                      children: [
-                        // Name field
-                        TextField(
-                          controller: nameController,
-                          decoration: InputDecoration(
-                            labelText: 'Student Name',
-                            hintText: 'Enter full name',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        // ID and Add button in a row
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: idController,
-                                decoration: InputDecoration(
-                                  labelText: 'Student ID',
-                                  hintText: 'ID',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+                      child: Column(
+                        children: [
+                          // Search box for filtering students
+                          TextField(
+                            controller: searchController,
+                            decoration: InputDecoration(
+                              labelText: 'Search Students',
+                              hintText: 'Enter name or ID',
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                if (nameController.text.isNotEmpty && idController.text.isNotEmpty) {
-                                  setState(() {
-                                    students.add({
-                                      'id': idController.text,
-                                      'name': nameController.text,
-                                      'attendance': 0.0,
-                                      'grade': 'N/A',
-                                    });
-                                    nameController.clear();
-                                    idController.clear();
-                                  });
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _accentColor,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              ),
-                              child: const Text('Add'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: students.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.people_outline,
-                                  size: 64,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No students in this class yet',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Add students using the form above',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: students.length,
-                            itemBuilder: (context, index) {
-                              final student = students[index];
-                              return ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: _accentColor.withOpacity(0.2),
-                                  child: Text(
-                                    student['name'].toString().substring(0, 1),
-                                    style: TextStyle(color: _accentColor),
-                                  ),
-                                ),
-                                title: Text(
-                                  student['name'] as String,
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                                subtitle: Text('ID: ${student['id']} | Grade: ${student['grade']}'),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, color: Colors.blue),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      onPressed: () {
-                                        // Edit student functionality could be added here
-                                        // For now, we'll just show a snackbar
-                                        Navigator.pop(context);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Edit student functionality coming soon')),
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(width: 12),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      onPressed: () {
-                                        setState(() {
-                                          students.removeAt(index);
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              );
+                            onChanged: (value) {
+                              setState(() {
+                                filteredStudents = students.where((student) {
+                                  final name = student['name'].toString().toLowerCase();
+                                  final id = student['studentId'].toString().toLowerCase();
+                                  final query = value.toLowerCase();
+                                  return name.contains(query) || id.contains(query);
+                                }).toList();
+                              });
                             },
                           ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: Colors.grey.shade300,
-                          width: 1,
-                        ),
+                          const SizedBox(height: 12),
+                          // Enroll Student button
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Enroll student functionality coming soon')),
+                              );
+                            },
+                            icon: const Icon(Icons.person_add),
+                            label: const Text('Enroll Student'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _accentColor,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(double.infinity, 48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: _primaryColor),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                          child: Text('Cancel', style: TextStyle(color: _primaryColor)),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () {
-                            // Update student data
-                            setState(() {
-                              final index = _classes.indexOf(classData);
-                              if (index != -1) {
-                                _classes[index]['studentsData'] = students;
-                                _classes[index]['students'] = students.length;
-                              }
-                            });
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Student list updated successfully')),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _primaryColor,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                          child: const Text('Save Changes'),
-                        ),
-                      ],
+                    const Divider(),
+                    Expanded(
+                      child: filteredStudents.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.people_outline,
+                                    size: 64,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    students.isEmpty ? 'No students in this class yet' : 'No students match your search',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    students.isEmpty ? 'Enroll students using the button above' : 'Try a different search term',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: filteredStudents.length,
+                              itemBuilder: (context, index) {
+                                final student = filteredStudents[index];
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: _accentColor.withOpacity(0.2),
+                                    child: Text(
+                                      student['name'].toString().substring(0, 1),
+                                      style: TextStyle(color: _accentColor),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    student['name'] as String,
+                                    style: const TextStyle(fontWeight: FontWeight.w500),
+                                  ),
+                                  subtitle: Text('ID: ${student['studentId']}'),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                                    tooltip: 'Remove from class',
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text('Remove Student'),
+                                          content: Text('Are you sure you want to remove ${student['name']} from this class?'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                                setState(() {
+                                                  students.remove(student);
+                                                  filteredStudents = List.from(students.where((s) {
+                                                    final name = s['name'].toString().toLowerCase();
+                                                    final id = s['studentId'].toString().toLowerCase();
+                                                    final query = searchController.text.toLowerCase();
+                                                    return name.contains(query) || id.contains(query);
+                                                  }));
+                                                });
+                                              },
+                                              child: const Text('Remove'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
                     ),
-                  ),
-                ],
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: Colors.grey.shade300,
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${filteredStudents.length} students',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _primaryColor,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: _primaryColor),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                ),
+                                child: Text('Close', style: TextStyle(color: _primaryColor)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             );
           },
-      ),
-    );
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = e.toString();
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load students: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _showManageStudentsDialog(classData),
+            textColor: Colors.white,
+          ),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   void _showClassAnalyticsView(Map<String, dynamic> classData) async {
@@ -1731,7 +1713,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
             ),
           ),
         ),
-      );
+        );
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1936,8 +1918,8 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
+                          IconButton(
+                            icon: Icon(Icons.add_circle, color: _accentColor),
                             onPressed: () {
                               if (subjectsController.text.isNotEmpty) {
                                 setState(() {
@@ -1946,16 +1928,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                 });
                               }
                             },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _accentColor,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                            ),
-                            child: const Text('Add'),
-                          ),
+                          )
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -2093,6 +2066,10 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
                     border: Border(
                       top: BorderSide(
                         color: Colors.grey.shade200,
@@ -2608,37 +2585,32 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   }
 
   void _showManageTeachersDialog(Map<String, dynamic> classData) async {
-    // Get current teachers or empty list
-    List<Map<String, dynamic>> teachers = [];
-    List<String> selectedTeacherIds = [];
-    
     // Show loading state
     setState(() => _isLoading = true);
     
     try {
       final String classId = classData['_id'] ?? classData['id'];
       
-      // Fetch teachers for this class
-      final classTeachers = await _classService.getClassTeachers(classId);
+      // Initialize TeacherService
+      final teacherService = TeacherService(baseUrl: 'http://localhost:3000');
       
-      // Extract teacher IDs for tracking selection
-      selectedTeacherIds = classTeachers
+      // Fetch all teachers from the school
+      final List<Map<String, dynamic>> allTeachers = await teacherService.getAllTeachers();
+      
+      // Fetch teachers already assigned to this class
+      final List<Map<String, dynamic>> classTeachers = await _classService.getClassTeachers(classId);
+      
+      print('DEBUG - Class teachers: $classTeachers');
+      
+      // Extract IDs of teachers already assigned to the class
+      final selectedTeacherIds = classTeachers
           .map((teacher) => teacher['_id'] as String)
           .toList();
       
-      // For simplicity in this example, let's create a dummy list of available teachers
-      // In a real app, you would fetch this from your API
-      teachers = [
-        {'_id': '64a7d9d67eafca861d8211b0', 'name': 'John Smith', 'email': 'john@school.com', 'teacherId': 'T001'},
-        {'_id': '64a7d9e87eafca861d8211b4', 'name': 'Sarah Williams', 'email': 'sarah@school.com', 'teacherId': 'T002'},
-        {'_id': '64a7d9f97eafca861d8211b8', 'name': 'Michael Brown', 'email': 'michael@school.com', 'teacherId': 'T003'},
-        {'_id': '64a7da0a7eafca861d8211bc', 'name': 'Jennifer Davis', 'email': 'jennifer@school.com', 'teacherId': 'T004'},
-      ];
-      
       setState(() => _isLoading = false);
       
-      // Show the dialog
-      showTeacherSelectionDialog(classData, teachers, selectedTeacherIds);
+      // Show the dialog with the fetched data
+      showTeacherSelectionDialog(classData, allTeachers, selectedTeacherIds, classTeachers);
       
     } catch (e) {
       setState(() => _isLoading = false);
@@ -2653,11 +2625,16 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   
   void showTeacherSelectionDialog(
     Map<String, dynamic> classData, 
-    List<Map<String, dynamic>> teachers,
-    List<String> initialSelectedTeachers
+    List<Map<String, dynamic>> allTeachers,
+    List<String> initialSelectedTeacherIds,
+    List<Map<String, dynamic>> classTeachers
   ) {
     // Create a new list to track selected teachers in the dialog
-    final selectedTeacherIds = List<String>.from(initialSelectedTeachers);
+    final selectedTeacherIds = List<String>.from(initialSelectedTeacherIds);
+    
+    // Controller for searching teachers
+    final searchController = TextEditingController();
+    List<Map<String, dynamic>> filteredTeachers = List.from(allTeachers);
     
     showDialog(
       context: context,
@@ -2700,81 +2677,230 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    'Select teachers to assign to this class',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade700,
+                
+                // Current assigned teachers section
+                if (classTeachers.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      border: Border(
+                        bottom: BorderSide(color: Colors.blue.shade100, width: 1),
+                      ),
                     ),
-                  ),
-                ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: teachers.length,
-                    itemBuilder: (context, index) {
-                      final teacher = teachers[index];
-                      final isSelected = selectedTeacherIds.contains(teacher['_id']);
-                      
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isSelected 
-                            ? _accentColor 
-                            : Colors.grey.shade200,
-                          child: isSelected 
-                            ? const Icon(Icons.check, color: Colors.white, size: 20) 
-                            : Text(
-                                teacher['name'].toString().substring(0, 1),
-                                style: TextStyle(
-                                  color: isSelected ? Colors.white : _accentColor,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Currently Assigned Teachers',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: _primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: classTeachers.map((teacher) {
+                            return Chip(
+                              avatar: CircleAvatar(
+                                backgroundColor: _accentColor,
+                                child: Text(
+                                  teacher['name'].toString().substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
+                              label: Text(teacher['name']),
+                              backgroundColor: Colors.white,
+                              side: BorderSide(color: _accentColor.withOpacity(0.5)),
+                              deleteIcon: const Icon(Icons.close, size: 18),
+                              onDeleted: () {
+                                setState(() {
+                                  selectedTeacherIds.remove(teacher['_id']);
+                                });
+                              },
+                            );
+                          }).toList(),
                         ),
-                        title: Text(
-                          teacher['name'] as String,
-                          style: TextStyle(
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${teacher['email']} | ID: ${teacher['teacherId']}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        trailing: Checkbox(
-                          value: isSelected,
-                          activeColor: _accentColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          onChanged: (bool? value) {
-                            setState(() {
-                              if (value == true) {
-                                selectedTeacherIds.add(teacher['_id'] as String);
-                              } else {
-                                selectedTeacherIds.remove(teacher['_id'] as String);
-                              }
-                            });
-                          },
-                        ),
-                        onTap: () {
-                          setState(() {
-                            if (isSelected) {
-                              selectedTeacherIds.remove(teacher['_id'] as String);
-                            } else {
-                              selectedTeacherIds.add(teacher['_id'] as String);
-                            }
-                          });
-                        },
-                      );
+                      ],
+                    ),
+                  ),
+                ],
+                
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Search Teachers',
+                      hintText: 'Enter name or ID',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        filteredTeachers = allTeachers.where((teacher) {
+                          final name = teacher['name'].toString().toLowerCase();
+                          final id = (teacher['teacherId'] ?? '').toString().toLowerCase();
+                          final email = (teacher['email'] ?? '').toString().toLowerCase();
+                          final query = value.toLowerCase();
+                          return name.contains(query) || id.contains(query) || email.contains(query);
+                        }).toList();
+                      });
                     },
                   ),
                 ),
+                
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'All Available Teachers',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _primaryColor,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            'Selected: ${selectedTeacherIds.length}',
+                            style: TextStyle(
+                              color: _accentColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: Icon(Icons.clear_all, color: Colors.grey.shade700),
+                            tooltip: 'Clear all selections',
+                            onPressed: () {
+                              setState(() {
+                                selectedTeacherIds.clear();
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const Divider(),
+                
+                Expanded(
+                  child: filteredTeachers.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.person_search,
+                                size: 64,
+                                color: Colors.grey.shade300,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No teachers found',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                searchController.text.isNotEmpty
+                                    ? 'Try using different search terms'
+                                    : 'No teachers have been added to the school yet',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade500,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filteredTeachers.length,
+                          itemBuilder: (context, index) {
+                            final teacher = filteredTeachers[index];
+                            final isSelected = selectedTeacherIds.contains(teacher['_id']);
+                            
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isSelected 
+                                  ? _accentColor 
+                                  : Colors.grey.shade200,
+                                child: isSelected 
+                                  ? const Icon(Icons.check, color: Colors.white, size: 20) 
+                                  : Text(
+                                      teacher['name'].toString().substring(0, 1).toUpperCase(),
+                                      style: TextStyle(
+                                        color: isSelected ? Colors.white : _accentColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                              ),
+                              title: Text(
+                                teacher['name'] as String,
+                                style: TextStyle(
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              subtitle: Text(
+                                [
+                                  teacher['teacherId'] != null ? 'ID: ${teacher['teacherId']}' : '',
+                                  teacher['email'] != null ? teacher['email'].toString() : ''
+                                ].where((s) => s.isNotEmpty).join(' | '),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              trailing: Checkbox(
+                                value: isSelected,
+                                activeColor: _accentColor,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      selectedTeacherIds.add(teacher['_id'] as String);
+                                    } else {
+                                      selectedTeacherIds.remove(teacher['_id'] as String);
+                                    }
+                                  });
+                                },
+                              ),
+                              onTap: () {
+                                setState(() {
+                                  if (isSelected) {
+                                    selectedTeacherIds.remove(teacher['_id'] as String);
+                                  } else {
+                                    selectedTeacherIds.add(teacher['_id'] as String);
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        ),
+                ),
+                
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -2790,19 +2916,11 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Expanded(
-                        child: Text(
-                          'Selected: ${selectedTeacherIds.length} teachers',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: _primaryColor,
-                          ),
-                        ),
-                      ),
                       OutlinedButton(
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: _primaryColor),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                         child: Text('Cancel', style: TextStyle(color: _primaryColor)),
                       ),
@@ -2825,8 +2943,8 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                             
                             // Show success message
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Class teachers updated successfully'),
+                              SnackBar(
+                                content: Text('Successfully updated teachers for ${classData['name']}'),
                                 backgroundColor: Colors.green,
                               ),
                             );
@@ -2845,6 +2963,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _primaryColor,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                         child: const Text('Save Changes'),
                       ),

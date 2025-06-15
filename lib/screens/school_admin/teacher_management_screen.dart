@@ -1,140 +1,180 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
+import '../../services/teacher_service.dart'; // Add import for TeacherService
+import '../../utils/storage_util.dart'; // Add import for StorageUtil
 
 class TeacherManagementScreen extends StatefulWidget {
   final User user;
   
-  const TeacherManagementScreen({Key? key, required this.user}) : super(key: key);
+  const TeacherManagementScreen({super.key, required this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _TeacherManagementScreenState createState() => _TeacherManagementScreenState();
 }
 
 class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
-  final List<Map<String, dynamic>> _teachers = [
-    {
-      'id': '001',
-      'name': 'Robert Johnson',
-      'email': 'robert.johnson@school.edu',
-      'phone': '+1 (555) 123-4567',
-      'subjects': ['Mathematics', 'Physics'],
-      'classes': ['Class 10A', 'Class 9B'],
-      'joinDate': '2018-09-01',
-      'qualification': 'M.Sc. Mathematics',
-      'avatar': 'assets/images/teacher1.png',
-      'roles': ['Subject Teacher', 'Department Head - Science'],
-      'performance': {
-        'attendance': 95,
-        'studentFeedback': 4.5,
-        'classPerformance': 88,
-        'lastEvaluation': '2023-05-15',
-      }
-    },
-    {
-      'id': '002',
-      'name': 'Sarah Williams',
-      'email': 'sarah.williams@school.edu',
-      'phone': '+1 (555) 234-5678',
-      'subjects': ['English', 'History'],
-      'classes': ['Class 10A', 'Class 9B', 'Class 8C'],
-      'joinDate': '2019-08-15',
-      'qualification': 'M.A. English Literature',
-      'avatar': 'assets/images/teacher2.png',
-      'roles': ['Class Teacher - Class 10A', 'Subject Teacher'],
-      'performance': {
-        'attendance': 92,
-        'studentFeedback': 4.8,
-        'classPerformance': 90,
-        'lastEvaluation': '2023-04-20',
-      }
-    },
-    {
-      'id': '003',
-      'name': 'Michael Brown',
-      'email': 'michael.brown@school.edu',
-      'phone': '+1 (555) 345-6789',
-      'subjects': ['Chemistry', 'Biology'],
-      'classes': ['Class 10A', 'Class 9B'],
-      'joinDate': '2017-07-10',
-      'qualification': 'Ph.D. Chemistry',
-      'avatar': 'assets/images/teacher3.png',
-      'roles': ['Subject Teacher', 'Lab Coordinator'],
-      'performance': {
-        'attendance': 97,
-        'studentFeedback': 4.2,
-        'classPerformance': 85,
-        'lastEvaluation': '2023-06-05',
-      }
-    },
-    {
-      'id': '004',
-      'name': 'Emily Davis',
-      'email': 'emily.davis@school.edu',
-      'phone': '+1 (555) 456-7890',
-      'subjects': ['Geography', 'Social Studies'],
-      'classes': ['Class 8C', 'Class 7D'],
-      'joinDate': '2020-01-05',
-      'qualification': 'B.Ed., M.A. Geography',
-      'avatar': 'assets/images/teacher4.png',
-      'roles': ['Class Teacher - Class 8C', 'Subject Teacher'],
-      'performance': {
-        'attendance': 89,
-        'studentFeedback': 4.4,
-        'classPerformance': 82,
-        'lastEvaluation': '2023-05-22',
-      }
-    },
-    {
-      'id': '005',
-      'name': 'Daniel Wilson',
-      'email': 'daniel.wilson@school.edu',
-      'phone': '+1 (555) 567-8901',
-      'subjects': ['Computer Science', 'Mathematics'],
-      'classes': ['Class 10A', 'Class 9B'],
-      'joinDate': '2018-11-20',
-      'qualification': 'M.Tech Computer Science',
-      'avatar': 'assets/images/teacher5.png',
-      'roles': ['Subject Teacher', 'IT Coordinator'],
-      'performance': {
-        'attendance': 94,
-        'studentFeedback': 4.7,
-        'classPerformance': 91,
-        'lastEvaluation': '2023-06-10',
-      }
-    },
-  ];
-
+  // Replace dummy data with API data
+  List<Map<String, dynamic>> _teachers = [];
+  List<Map<String, dynamic>> _filteredTeachers = [];
+  bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
+  
+  // Initialize the teacher service
+  late TeacherService _teacherService;
+  
   // Theme colors
   late Color _primaryColor;
   late Color _accentColor;
   late Color _tertiaryColor;
-  late List<Color> _gradientColors;
   late List<Color> _cardColors;
 
   final _searchController = TextEditingController();
-  List<Map<String, dynamic>> _filteredTeachers = [];
-  bool _isLoading = false;
   String _selectedFilter = 'All';
 
   @override
   void initState() {
     super.initState();
     _loadThemeColors();
-    _filteredTeachers = List.from(_teachers);
+    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+    _loadTeachers();
   }
   
   void _loadThemeColors() {
     _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
     _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
     _tertiaryColor = AppTheme.getTertiaryColor(AppTheme.defaultTheme);
-    _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
     _cardColors = [
       const Color(0xFFE3F2FD), // Vibrant blue shade
       const Color(0xFFE0F2F1), // Vibrant teal shade
       const Color(0xFFFFF8E1), // Vibrant amber shade
       const Color(0xFFF3E5F5), // Vibrant purple shade
     ];
+  }
+
+  // Load teachers from API
+  Future<void> _loadTeachers() async {
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _errorMessage = '';
+    });
+
+    try {
+      // Access values directly from StorageUtil memory cache
+      final schoolId = await StorageUtil.getString('schoolId');
+    
+      
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found. Please log in again.');
+      }
+      
+      // Use the TeacherService to get all teachers
+      final teachers = await _teacherService.getAllTeachers();
+      
+      // Map API response to our expected data format
+      final formattedTeachers = teachers.map((teacher) {
+        // Process the teacher data to match our expected structure
+        return {
+          'id': teacher['_id'] ?? '', // Use _id as the primary identifier
+          'name': teacher['name'] ?? 'Unknown',
+          'email': teacher['email'] ?? '',
+          'phone': teacher['phone'] ?? '',
+          'subjects': _extractSubjects(teacher),
+          'classes': _extractClasses(teacher),
+          'joinDate': teacher['dateJoined'] != null 
+              ? _formatDate(teacher['dateJoined']) 
+              : (teacher['createdAt'] != null ? _formatDate(teacher['createdAt']) : 'Unknown'),
+          'qualification': teacher['qualification'] ?? 'Not specified',
+          'avatar': 'assets/images/teacher_default.png',
+          'roles': _extractRoles(teacher),
+        };
+      }).toList();
+      
+      setState(() {
+        _teachers = formattedTeachers;
+        _filteredTeachers = List.from(_teachers);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = e.toString();
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load teachers: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: _loadTeachers,
+            textColor: Colors.white,
+          ),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    }
+  }
+  
+  // Helper method to extract subjects from teacher data
+  List<String> _extractSubjects(Map<String, dynamic> teacher) {
+    if (teacher.containsKey('teachingSubs') && teacher['teachingSubs'] is List) {
+      return List<String>.from(teacher['teachingSubs']);
+    } else if (teacher.containsKey('subjects') && teacher['subjects'] is List) {
+      return List<String>.from(teacher['subjects']);
+    } else {
+      return [];
+    }
+  }
+  
+  // Helper method to extract classes from teacher data
+  List<String> _extractClasses(Map<String, dynamic> teacher) {
+    if (teacher.containsKey('classes') && teacher['classes'] is List) {
+      return List<String>.from(teacher['classes'].map((c) {
+        if (c is String) return c;
+        if (c is Map && c.containsKey('name')) return c['name'].toString();
+        return "Unknown Class";
+      }));
+    }
+    return [];
+  }
+  
+  // Helper method to extract roles from teacher data
+  List<String> _extractRoles(Map<String, dynamic> teacher) {
+    if (teacher.containsKey('roles') && teacher['roles'] is List) {
+      List<String> roles = List<String>.from(teacher['roles']);
+      
+      // Convert API role formats to display formats
+      return roles.map((role) {
+        // Convert CamelCase roles to spaced words (e.g., "ClassTeacher" to "Class Teacher")
+        if (role == "ClassTeacher") return "Class Teacher";
+        if (role == "SubjectTeacher") return "Subject Teacher";
+        if (role == "HeadTeacher") return "Head Teacher";
+        if (role == "DepartmentHead") return "Department Head";
+        return role;
+      }).toList();
+    }
+    return ['Subject Teacher']; // Default role
+  }
+  
+  // Format date string from API
+  String _formatDate(String dateStr) {
+    try {
+      final DateTime date = DateTime.parse(dateStr);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateStr;
+    }
+  }
+  
+  // Refresh teachers data
+  Future<void> _refreshTeachers() async {
+    await _loadTeachers();
+    _filterTeachers(_searchController.text);
   }
 
   void _filterTeachers(String query) {
@@ -189,6 +229,10 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshTeachers,
+          ),
+          IconButton(
             icon: Icon(Icons.notifications, color: _accentColor),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -198,512 +242,485 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.white, Colors.grey.shade100],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.shade200,
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search teachers...',
-                    prefixIcon: Icon(Icons.search, color: _accentColor),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16.0),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0.0),
-                    fillColor: Colors.grey.shade50,
-                    filled: true,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16.0),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16.0),
-                      borderSide: BorderSide(color: _accentColor),
-                    ),
-                  ),
-                  onChanged: _filterTeachers,
-                ),
-                const SizedBox(height: 16),
-                Row(
+      body: _isLoading 
+          ? Center(child: CircularProgressIndicator(color: _accentColor))
+          : _hasError 
+              ? _buildErrorView()
+              : Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.all(16.0),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                          colors: [Colors.white, Colors.grey.shade100],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _selectedFilter == 'All'
-                                ? 'All Teachers'
-                                : '$_selectedFilter Teachers',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${_filteredTeachers.length}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.shade200,
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                    ),
-                    const Spacer(),
-                    OutlinedButton.icon(
-                      icon: Icon(Icons.filter_list, color: _accentColor),
-                      label: Text(
-                        'Filter', 
-                        style: TextStyle(color: _accentColor)
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: _accentColor),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      onPressed: _showFilterOptions,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(30),
-                  topRight: Radius.circular(30),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.shade200,
-                    blurRadius: 8,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: _accentColor))
-                  : _filteredTeachers.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.person_off,
-                                size: 64,
-                                color: Colors.grey.shade400,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Search teachers...',
+                              prefixIcon: Icon(Icons.search, color: _accentColor),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                                borderSide: BorderSide.none,
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No teachers found',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 0.0),
+                              fillColor: Colors.grey.shade50,
+                              filled: true,
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                                borderSide: BorderSide(color: Colors.grey.shade200),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Try changing your search criteria',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey.shade500,
-                                ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                                borderSide: BorderSide(color: _accentColor),
                               ),
-                            ],
+                            ),
+                            onChanged: _filterTeachers,
                           ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
-                          itemCount: _filteredTeachers.length,
-                          itemBuilder: (context, index) {
-                            final teacher = _filteredTeachers[index];
-                            // Create gradient colors based on index
-                            final List<Color> gradientColors;
-                            switch (index % 4) {
-                              case 0:
-                                gradientColors = [
-                                  const Color(0xFF90CAF9),
-                                  const Color(0xFFBBDEFB),
-                                ];
-                                break;
-                              case 1:
-                                gradientColors = [
-                                  const Color(0xFF80CBC4),
-                                  const Color(0xFFB2DFDB),
-                                ];
-                                break;
-                              case 2:
-                                gradientColors = [
-                                  const Color(0xFFFFD54F),
-                                  const Color(0xFFFFE082),
-                                ];
-                                break;
-                              case 3:
-                                gradientColors = [
-                                  const Color(0xFFCE93D8),
-                                  const Color(0xFFE1BEE7),
-                                ];
-                                break;
-                              default:
-                                gradientColors = [
-                                  const Color(0xFF90CAF9),
-                                  const Color(0xFFBBDEFB),
-                                ];
-                            }
-                        
-                            final cardColor = _cardColors[index % _cardColors.length];
-                            
-                            return Card(
-                              elevation: 3,
-                              shadowColor: gradientColors[0].withOpacity(0.3),
-                              margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(18),
-                                onTap: () => _showTeacherDetails(teacher),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    // Header section with gradient
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: gradientColors,
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(18),
-                                          topRight: Radius.circular(18),
-                                        ),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: gradientColors[0].withOpacity(0.3),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Text(
-                                              teacher['name'].toString().substring(0, 1),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 18,
-                                                color: gradientColors[0],
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  teacher['name'] as String,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 18,
-                                                    color: Colors.white,
-                                                    shadows: [
-                                                      Shadow(
-                                                        offset: Offset(0, 1),
-                                                        blurRadius: 2,
-                                                        color: Color(0x50000000),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  teacher['email'] as String,
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 14,
-                                                    shadows: [
-                                                      Shadow(
-                                                        offset: Offset(0, 1),
-                                                        blurRadius: 2,
-                                                        color: Color(0x50000000),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(16),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: gradientColors[0].withOpacity(0.3),
-                                                  blurRadius: 4,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Text(
-                                              'ID: ${teacher['id']}',
-                                              style: TextStyle(
-                                                color: gradientColors[0],
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                    Text(
+                                      _selectedFilter == 'All'
+                                          ? 'All Teachers'
+                                          : '$_selectedFilter Teachers',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
                                       ),
                                     ),
-                                    // Body section
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(Icons.book, color: gradientColors[0], size: 20),
-                                              const SizedBox(width: 6),
-                                              const Text(
-                                                'Teaching Subjects:',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 15,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: (teacher['subjects'] as List<String>)
-                                                .map((subject) => Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                      decoration: BoxDecoration(
-                                                        gradient: LinearGradient(
-                                                          colors: [
-                                                            gradientColors[0].withOpacity(0.2),
-                                                            gradientColors[1].withOpacity(0.2),
-                                                          ],
-                                                          begin: Alignment.topLeft,
-                                                          end: Alignment.bottomRight,
-                                                        ),
-                                                        borderRadius: BorderRadius.circular(16),
-                                                        border: Border.all(color: gradientColors[0].withOpacity(0.3)),
-                                                      ),
-                                                      child: Text(
-                                                        subject,
-                                                        style: TextStyle(
-                                                          fontSize: 12, 
-                                                          color: gradientColors[0].withOpacity(0.8),
-                                                          fontWeight: FontWeight.w500,
-                                                        ),
-                                                      ),
-                                                    ))
-                                                .toList(),
-                                          ),
-                                          const SizedBox(height: 16),
-                                          Row(
-                                            children: [
-                                              Icon(Icons.school, color: gradientColors[0], size: 20),
-                                              const SizedBox(width: 6),
-                                              const Text(
-                                                'Classes:',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 15,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: (teacher['classes'] as List<String>)
-                                                .map((className) => Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                      decoration: BoxDecoration(
-                                                        color: gradientColors[0].withOpacity(0.1),
-                                                        borderRadius: BorderRadius.circular(16),
-                                                        border: Border.all(color: gradientColors[0].withOpacity(0.2)),
-                                                      ),
-                                                      child: Text(
-                                                        className,
-                                                        style: TextStyle(
-                                                          fontSize: 12, 
-                                                          color: gradientColors[0].withOpacity(0.8),
-                                                          fontWeight: FontWeight.w500,
-                                                        ),
-                                                      ),
-                                                    ))
-                                                .toList(),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    // Footer with actions
+                                    const SizedBox(width: 8),
                                     Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: Colors.grey.shade50,
-                                        borderRadius: const BorderRadius.only(
-                                          bottomLeft: Radius.circular(18),
-                                          bottomRight: Radius.circular(18),
-                                        ),
-                                        border: Border(
-                                          top: BorderSide(
-                                            color: gradientColors[0].withOpacity(0.2),
-                                            width: 1,
-                                          ),
-                                        ),
+                                        color: Colors.white.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          TextButton.icon(
-                                            icon: Icon(Icons.edit, size: 18, color: gradientColors[0]),
-                                            label: Text('Edit', style: TextStyle(color: gradientColors[0])),
-                                            onPressed: () => _showEditTeacherDialog(teacher),
-                                          ),
-                                          Row(
-                                            children: [
-                                              Material(
-                                                color: Colors.transparent,
-                                                shape: const CircleBorder(),
-                                                clipBehavior: Clip.antiAlias,
-                                                child: IconButton(
-                                                  icon: Icon(Icons.badge, color: Colors.green.shade400),
-                                                  onPressed: () => _showManageRolesDialog(teacher),
-                                                  tooltip: "Manage Roles",
-                                                ),
-                                              ),
-                                              Material(
-                                                color: Colors.transparent,
-                                                shape: const CircleBorder(),
-                                                clipBehavior: Clip.antiAlias,
-                                                child: IconButton(
-                                                  icon: Icon(Icons.class_, color: Colors.orange.shade400),
-                                                  onPressed: () => _showAssignClassesDialog(teacher),
-                                                  tooltip: "Assign Classes",
-                                                ),
-                                              ),
-                                              Material(
-                                                color: Colors.transparent,
-                                                shape: const CircleBorder(),
-                                                clipBehavior: Clip.antiAlias,
-                                                child: IconButton(
-                                                  icon: Icon(Icons.analytics, color: Colors.purple.shade400),
-                                                  onPressed: () => _showTeacherPerformance(teacher),
-                                                  tooltip: "Performance",
-                                                ),
-                                              ),
-                                              PopupMenuButton(
-                                                icon: const Icon(
-                                                  Icons.more_vert,
-                                                  color: Colors.grey,
-                                                ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                ),
-                                                itemBuilder: (context) => [
-                                                  const PopupMenuItem(
-                                                    value: 'message',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(Icons.message, color: Colors.blue, size: 20),
-                                                        SizedBox(width: 8),
-                                                        Text('Send Message'),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const PopupMenuItem(
-                                                    value: 'delete',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(Icons.delete, color: Colors.red, size: 20),
-                                                        SizedBox(width: 8),
-                                                        Text('Delete Teacher'),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                                onSelected: (value) {
-                                                  _handleMenuAction(value, teacher);
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ],
+                                      child: Text(
+                                        '${_filteredTeachers.length}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            );
-                          },
+                              const Spacer(),
+                              OutlinedButton.icon(
+                                icon: Icon(Icons.filter_list, color: _accentColor),
+                                label: Text(
+                                  'Filter', 
+                                  style: TextStyle(color: _accentColor)
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: _accentColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                onPressed: _showFilterOptions,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(30),
+                            topRight: Radius.circular(30),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.shade200,
+                              blurRadius: 8,
+                              offset: const Offset(0, -4),
+                            ),
+                          ],
                         ),
-            ),
-          ),
-        ],
-      ),
+                        child: _teachers.isEmpty
+                            ? _buildEmptyView()
+                            : _filteredTeachers.isEmpty
+                                ? _buildNoMatchView()
+                                : ListView.builder(
+                                    padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
+                                    itemCount: _filteredTeachers.length,
+                                    itemBuilder: (context, index) {
+                                      final teacher = _filteredTeachers[index];
+                                      // Create gradient colors based on index
+                                      final List<Color> gradientColors;
+                                      switch (index % 4) {
+                                        case 0:
+                                          gradientColors = [
+                                            const Color(0xFF90CAF9),
+                                            const Color(0xFFBBDEFB),
+                                          ];
+                                          break;
+                                        case 1:
+                                          gradientColors = [
+                                            const Color(0xFF80CBC4),
+                                            const Color(0xFFB2DFDB),
+                                          ];
+                                          break;
+                                        case 2:
+                                          gradientColors = [
+                                            const Color(0xFFFFD54F),
+                                            const Color(0xFFFFE082),
+                                          ];
+                                          break;
+                                        case 3:
+                                          gradientColors = [
+                                            const Color(0xFFCE93D8),
+                                            const Color(0xFFE1BEE7),
+                                          ];
+                                          break;
+                                        default:
+                                          gradientColors = [
+                                            const Color(0xFF90CAF9),
+                                            const Color(0xFFBBDEFB),
+                                          ];
+                                      }                          
+                                      return Card(
+                                        elevation: 3,
+                                        shadowColor: gradientColors[0].withOpacity(0.3),
+                                        margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(18),
+                                        ),
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(18),
+                                          onTap: () => _showTeacherDetails(teacher),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Header section with gradient
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: gradientColors,
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                  ),
+                                                  borderRadius: const BorderRadius.only(
+                                                    topLeft: Radius.circular(18),
+                                                    topRight: Radius.circular(18),
+                                                  ),
+                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      padding: const EdgeInsets.all(12),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        shape: BoxShape.circle,
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: gradientColors[0].withOpacity(0.3),
+                                                            blurRadius: 8,
+                                                            offset: const Offset(0, 2),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: Text(
+                                                        teacher['name'].toString().substring(0, 1),
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 18,
+                                                          color: gradientColors[0],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 16),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            teacher['name'] as String,
+                                                            style: const TextStyle(
+                                                              fontWeight: FontWeight.bold,
+                                                              fontSize: 18,
+                                                              color: Colors.white,
+                                                              shadows: [
+                                                                Shadow(
+                                                                  offset: Offset(0, 1),
+                                                                  blurRadius: 2,
+                                                                  color: Color(0x50000000),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 4),
+                                                          Text(
+                                                            teacher['email'] as String,
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 14,
+                                                              shadows: [
+                                                                Shadow(
+                                                                  offset: Offset(0, 1),
+                                                                  blurRadius: 2,
+                                                                  color: Color(0x50000000),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        borderRadius: BorderRadius.circular(16),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: gradientColors[0].withOpacity(0.3),
+                                                            blurRadius: 4,
+                                                            offset: const Offset(0, 2),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: Text(
+                                                        'ID: ${teacher['id']}',
+                                                        style: TextStyle(
+                                                          color: gradientColors[0],
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              // Body section
+                                              Padding(
+                                                padding: const EdgeInsets.all(16.0),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Icon(Icons.book, color: gradientColors[0], size: 20),
+                                                        const SizedBox(width: 6),
+                                                        const Text(
+                                                          'Teaching Subjects:',
+                                                          style: TextStyle(
+                                                            fontWeight: FontWeight.w600,
+                                                            fontSize: 15,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 10),
+                                                    Wrap(
+                                                      spacing: 8,
+                                                      runSpacing: 8,
+                                                      children: (teacher['subjects'] as List<String>)
+                                                          .map((subject) => Container(
+                                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                                decoration: BoxDecoration(
+                                                                  gradient: LinearGradient(
+                                                                    colors: [
+                                                                      gradientColors[0].withOpacity(0.2),
+                                                                      gradientColors[1].withOpacity(0.2),
+                                                                    ],
+                                                                    begin: Alignment.topLeft,
+                                                                    end: Alignment.bottomRight,
+                                                                  ),
+                                                                  borderRadius: BorderRadius.circular(16),
+                                                                  border: Border.all(color: gradientColors[0].withOpacity(0.3)),
+                                                                ),
+                                                                child: Text(
+                                                                  subject,
+                                                                  style: TextStyle(
+                                                                    fontSize: 12, 
+                                                                    color: gradientColors[0].withOpacity(0.8),
+                                                                    fontWeight: FontWeight.w500,
+                                                                  ),
+                                                                ),
+                                                              ))
+                                                          .toList(),
+                                                    ),
+                                                    const SizedBox(height: 16),
+                                                    Row(
+                                                      children: [
+                                                        Icon(Icons.school, color: gradientColors[0], size: 20),
+                                                        const SizedBox(width: 6),
+                                                        const Text(
+                                                          'Classes:',
+                                                          style: TextStyle(
+                                                            fontWeight: FontWeight.w600,
+                                                            fontSize: 15,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 10),
+                                                    Wrap(
+                                                      spacing: 8,
+                                                      runSpacing: 8,
+                                                      children: (teacher['classes'] as List<String>)
+                                                          .map((className) => Container(
+                                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                                decoration: BoxDecoration(
+                                                                  color: gradientColors[0].withOpacity(0.1),
+                                                                  borderRadius: BorderRadius.circular(16),
+                                                                  border: Border.all(color: gradientColors[0].withOpacity(0.2)),
+                                                                ),
+                                                                child: Text(
+                                                                  className,
+                                                                  style: TextStyle(
+                                                                    fontSize: 12, 
+                                                                    color: gradientColors[0].withOpacity(0.8),
+                                                                    fontWeight: FontWeight.w500,
+                                                                  ),
+                                                                ),
+                                                              ))
+                                                          .toList(),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              // Footer with actions
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade50,
+                                                  borderRadius: const BorderRadius.only(
+                                                    bottomLeft: Radius.circular(18),
+                                                    bottomRight: Radius.circular(18),
+                                                  ),
+                                                  border: Border(
+                                                    top: BorderSide(
+                                                      color: gradientColors[0].withOpacity(0.2),
+                                                      width: 1,
+                                                    ),
+                                                  ),
+                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    TextButton.icon(
+                                                      icon: Icon(Icons.edit, size: 18, color: gradientColors[0]),
+                                                      label: Text('Edit', style: TextStyle(color: gradientColors[0])),
+                                                      onPressed: () => _showEditTeacherDialog(teacher),
+                                                    ),
+                                                    Row(
+                                                      children: [
+                                                        Material(
+                                                          color: Colors.transparent,
+                                                          shape: const CircleBorder(),
+                                                          clipBehavior: Clip.antiAlias,
+                                                          child: IconButton(
+                                                            icon: Icon(Icons.badge, color: Colors.green.shade400),
+                                                            onPressed: () => _showManageRolesDialog(teacher),
+                                                            tooltip: "Manage Roles",
+                                                          ),
+                                                        ),
+                                                        Material(
+                                                          color: Colors.transparent,
+                                                          shape: const CircleBorder(),
+                                                          clipBehavior: Clip.antiAlias,
+                                                          child: IconButton(
+                                                            icon: Icon(Icons.class_, color: Colors.orange.shade400),
+                                                            onPressed: () => _showAssignClassesDialog(teacher),
+                                                            tooltip: "Assign Classes",
+                                                          ),
+                                                        ),
+                                                        Material(
+                                                          color: Colors.transparent,
+                                                          shape: const CircleBorder(),
+                                                          clipBehavior: Clip.antiAlias,
+                                                          child: IconButton(
+                                                            icon: Icon(Icons.analytics, color: Colors.purple.shade400),
+                                                            onPressed: () => _showTeacherPerformance(teacher),
+                                                            tooltip: "Performance",
+                                                          ),
+                                                        ),
+                                                        PopupMenuButton(
+                                                          icon: const Icon(
+                                                            Icons.more_vert,
+                                                            color: Colors.grey,
+                                                          ),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(12),
+                                                          ),
+                                                          itemBuilder: (context) => [
+                                                            const PopupMenuItem(
+                                                              value: 'message',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(Icons.message, color: Colors.blue, size: 20),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Send Message'),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            const PopupMenuItem(
+                                                              value: 'delete',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(Icons.delete, color: Colors.red, size: 20),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Delete Teacher'),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ],
+                                                          onSelected: (value) {
+                                                            _handleMenuAction(value, teacher);
+                                                          },
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        );
+                                      },
+                                    ),
+                      ),
+                    ),
+                  ],
+                ),
       backgroundColor: Colors.white,
       floatingActionButton: Container(
         decoration: BoxDecoration(
@@ -731,7 +748,144 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
       ),
     );
   }
+  
+  // Build error view for API failures
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 80,
+            color: Colors.red.shade300,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load teachers',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadTeachers,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  // Build empty view when no teachers are available
+  Widget _buildEmptyView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_outline,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No Teachers Found',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Get started by adding your first teacher',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _showAddTeacherDialog,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Teacher'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Build view for when no teachers match filter criteria
+  Widget _buildNoMatchView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.filter_list_off,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No teachers match your filter',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try changing your search criteria',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.clear),
+            label: const Text('Clear Filters'),
+            onPressed: () {
+              setState(() {
+                _searchController.clear();
+                _selectedFilter = 'All';
+                _filteredTeachers = List.from(_teachers);
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
   void _showFilterOptions() {
     showModalBottomSheet(
       context: context,
@@ -1099,7 +1253,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
           ),
         ),
       ),
-      );
+    );
   }
   
   Widget _buildInfoSection(String title, IconData icon, List<Widget> children, Color color) {
@@ -1188,298 +1342,497 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.analytics, color: Colors.blue.shade700),
-              const SizedBox(width: 8),
-              Text(
-                'Performance Summary',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: Colors.blue.shade800,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Last updated: ${performance['lastEvaluation']}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.blue.shade800,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildPerformanceMetricCircular(
-                'Attendance',
-                performance['attendance'] as num,
-                100,
-                Colors.green,
-                Icons.check_circle,
-              ),
-              _buildPerformanceMetricCircular(
-                'Student\nFeedback',
-                performance['studentFeedback'] as num,
-                5,
-                Colors.orange,
-                Icons.star,
-              ),
-              _buildPerformanceMetricCircular(
-                'Class\nPerformance',
-                performance['classPerformance'] as num,
-                100,
-                Colors.purple,
-                Icons.school,
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
   
-  Widget _buildPerformanceMetricCircular(
-    String label, num value, num maxValue, Color color, IconData icon
-  ) {
-    final double percentage = (value / maxValue);
-    
-    return Column(
-      children: [
-        SizedBox(
-          height: 80,
-          width: 80,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CircularProgressIndicator(
-                value: percentage,
-                strokeWidth: 8,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-              ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: color, size: 16),
-                  const SizedBox(height: 4),
-                  Text(
-                    maxValue == 5 ? value.toString() : '${value.toInt()}%',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
 
   void _showAddTeacherDialog() {
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     final phoneController = TextEditingController();
-    final qualificationController = TextEditingController();
+    final passwordController = TextEditingController();
+    final dateJoinedController = TextEditingController(text: DateTime.now().toString().substring(0, 10));
+    final teacherIdController = TextEditingController(); // Added for Teacher ID
     
     // Selected subjects and roles
     final selectedSubjects = <String>{};
-    final selectedRoles = <String>{};
+    final selectedRoles = <String>{'SubjectTeacher'}; // Default role
+    bool salaryPaid = false;
+    
+    // Track form validation errors
+    Map<String, String?> errors = {
+      'name': null,
+      'email': null,
+      'password': null,
+      'teacherId': null, // Added for Teacher ID validation
+    };
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Add New Teacher'),
-          content: SingleChildScrollView(
+        builder: (context, setState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            width: double.maxFinite,
+            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    hintText: 'Enter teacher\'s full name',
+                // Dialog header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _primaryColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.person_add, color: _primaryColor),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Text(
+                          'Add New Teacher',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'Enter email address',
+                
+                // Form fields in scrollable area
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Teacher Information',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Name field
+                        TextField(
+                          controller: nameController,
+                          decoration: InputDecoration(
+                            labelText: 'Full Name*',
+                            hintText: 'Enter teacher\'s full name',
+                            errorText: errors['name'],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.person),
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              errors['name'] = value.isEmpty ? 'Name is required' : null;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Email field
+                        TextField(
+                          controller: emailController,
+                          decoration: InputDecoration(
+                            labelText: 'Email*',
+                            hintText: 'Enter email address',
+                            errorText: errors['email'],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.email),
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                          onChanged: (value) {
+                            setState(() {
+                              if (value.isEmpty) {
+                                errors['email'] = 'Email is required';
+                              } else if (!value.contains('@')) {
+                                errors['email'] = 'Enter a valid email address';
+                              } else {
+                                errors['email'] = null;
+                              }
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Password field
+                        TextField(
+                          controller: passwordController,
+                          decoration: InputDecoration(
+                            labelText: 'Password*',
+                            hintText: 'Enter temporary password',
+                            errorText: errors['password'],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.lock),
+                          ),
+                          obscureText: true,
+                          onChanged: (value) {
+                            setState(() {
+                              errors['password'] = value.isEmpty ? 'Password is required' : null;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Teacher ID field
+                        TextField(
+                          controller: teacherIdController,
+                          decoration: InputDecoration(
+                            labelText: 'Teacher ID*',
+                            hintText: 'Enter unique teacher ID',
+                            errorText: errors['teacherId'],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.badge_outlined),
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              errors['teacherId'] = value.isEmpty ? 'Teacher ID is required' : null;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Phone number
+                        TextField(
+                          controller: phoneController,
+                          decoration: InputDecoration(
+                            labelText: 'Phone Number',
+                            hintText: 'Enter phone number',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.phone),
+                          ),
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Date joined
+                        TextField(
+                          controller: dateJoinedController,
+                          decoration: InputDecoration(
+                            labelText: 'Date Joined',
+                            hintText: 'YYYY-MM-DD',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.calendar_today),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.calendar_month),
+                              onPressed: () async {
+                                final DateTime? picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    dateJoinedController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                          keyboardType: TextInputType.datetime,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Salary status
+                        CheckboxListTile(
+                          title: const Text("Salary Paid"),
+                          subtitle: const Text("Check if teacher's salary is already paid"),
+                          value: salaryPaid,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              salaryPaid = value ?? false;
+                            });
+                          },
+                          tileColor: Colors.grey.shade50,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 16),
+                        
+                        // Teaching subjects section
+                        const Text(
+                          'Teaching Subjects:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            'Mathematics',
+                            'Physics',
+                            'Chemistry',
+                            'Biology',
+                            'English',
+                            'History',
+                            'Geography',
+                            'Computer Science',
+                            'Social Studies'
+                          ].map((subject) => FilterChip(
+                                label: Text(subject),
+                                selected: selectedSubjects.contains(subject),
+                                onSelected: (selected) {
+                                  setState(() {
+                                    if (selected) {
+                                      selectedSubjects.add(subject);
+                                    } else {
+                                      selectedSubjects.remove(subject);
+                                    }
+                                  });
+                                },
+                                checkmarkColor: _accentColor,
+                                selectedColor: _accentColor.withOpacity(0.15),
+                                backgroundColor: Colors.grey.shade50,
+                                side: BorderSide(color: Colors.grey.shade300),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              )).toList(),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        // Teacher roles section
+                        const Text(
+                          'Teacher Roles:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Select one or more roles for the teacher',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            'ClassTeacher',
+                            'SubjectTeacher',
+                            'DepartmentHead',
+                            'HeadTeacher',
+                          ].map((role) => FilterChip(
+                                label: Text(_formatRoleForDisplay(role)),
+                                selected: selectedRoles.contains(role),
+                                onSelected: (selected) {
+                                  setState(() {
+                                    if (selected) {
+                                      selectedRoles.add(role);
+                                    } else {
+                                      // Ensure at least one role is selected
+                                      if (selectedRoles.length > 1) {
+                                        selectedRoles.remove(role);
+                                      }
+                                    }
+                                  });
+                                },
+                                checkmarkColor: _accentColor,
+                                selectedColor: _accentColor.withOpacity(0.15),
+                                backgroundColor: Colors.grey.shade50,
+                                side: BorderSide(color: Colors.grey.shade300),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              )).toList(),
+                        ),
+                      ],
+                    ),
                   ),
-                  keyboardType: TextInputType.emailAddress,
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    hintText: 'Enter phone number',
+                
+                // Actions area
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                    border: Border(
+                      top: BorderSide(color: Colors.grey.shade200),
+                    ),
                   ),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: qualificationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Qualification',
-                    hintText: 'Enter highest qualification',
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Select Teaching Subjects:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    'Mathematics',
-                    'Physics',
-                    'Chemistry',
-                    'Biology',
-                    'English',
-                    'History',
-                    'Geography',
-                    'Computer Science',
-                    'Social Studies'
-                  ].map((subject) => FilterChip(
-                        label: Text(subject),
-                        selected: selectedSubjects.contains(subject),
-                        onSelected: (selected) {
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.grey.shade400),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.person_add),
+                        label: const Text('Add Teacher'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          elevation: 2,
+                        ),
+                        onPressed: () async {
+                          // Validate required fields
+                          bool hasErrors = false;
                           setState(() {
-                            if (selected) {
-                              selectedSubjects.add(subject);
+                            errors['name'] = nameController.text.isEmpty ? 'Name is required' : null;
+                            if (emailController.text.isEmpty) {
+                              errors['email'] = 'Email is required';
+                            } else if (!emailController.text.contains('@')) {
+                              errors['email'] = 'Enter a valid email address';
                             } else {
-                              selectedSubjects.remove(subject);
+                              errors['email'] = null;
                             }
+                            errors['password'] = passwordController.text.isEmpty ? 'Password is required' : null;
+                            errors['teacherId'] = teacherIdController.text.isEmpty ? 'Teacher ID is required' : null;
+                            
+                            hasErrors = errors.values.any((error) => error != null);
                           });
-                        },
-                      )).toList(),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Select Teacher Roles:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    'Subject Teacher',
-                    'Class Teacher',
-                    'Department Head',
-                    'Lab Coordinator',
-                    'IT Coordinator',
-                    'Examination Coordinator',
-                    'Sports Coordinator'
-                  ].map((role) => FilterChip(
-                        label: Text(role),
-                        selected: selectedRoles.contains(role),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              selectedRoles.add(role);
-                            } else {
-                              selectedRoles.remove(role);
+                          
+                          if (hasErrors) {
+                            return; // Don't proceed if there are validation errors
+                          }
+
+                          try {
+                            Navigator.pop(context);
+                            setState(() => _isLoading = true);
+                            
+                            // Show progress message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    const Text('Creating teacher account...'),
+                                  ],
+                                ),
+                                backgroundColor: _primaryColor,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                            
+                            await _teacherService.createTeacher(
+                              name: nameController.text,
+                              email: emailController.text,
+                              phone: phoneController.text,
+                              password: passwordController.text,
+                              dateJoined: dateJoinedController.text,
+                              teacherId: teacherIdController.text,
+                              salaryPaid: salaryPaid,
+                              subjects: selectedSubjects.isNotEmpty ? selectedSubjects.toList() : null,
+                              classes: [],
+                              roles: selectedRoles.toList(),
+                            );
+                            
+                            await _refreshTeachers();
+                            
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Teacher account created successfully! Teacher can now login with their email and school secret key.'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          } catch (e) {
+                            setState(() => _isLoading = false);
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            
+                            String errorMessage = e.toString();
+                            if (errorMessage.contains('School secret key not found')) {
+                              errorMessage = 'School secret key not found. Please contact administrator.';
+                            } else if (errorMessage.contains('Email already exists')) {
+                              errorMessage = 'A user with this email already exists.';
                             }
-                          });
+                            
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to create teacher: $errorMessage'),
+                                backgroundColor: Colors.red,
+                                action: SnackBarAction(
+                                  label: 'Retry',
+                                  onPressed: () => _showAddTeacherDialog(),
+                                  textColor: Colors.white,
+                                ),
+                                duration: const Duration(seconds: 8),
+                              ),
+                            );
+                          }
                         },
-                      )).toList(),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (nameController.text.isEmpty || emailController.text.isEmpty || selectedSubjects.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please fill all required fields')),
-                  );
-                  return;
-                }
-
-                final newTeacher = {
-                  'id': 'T${_teachers.length + 1}',
-                  'name': nameController.text,
-                  'email': emailController.text,
-                  'phone': phoneController.text,
-                  'subjects': selectedSubjects.toList(),
-                  'classes': <String>[],
-                  'joinDate': DateTime.now().toString().substring(0, 10),
-                  'qualification': qualificationController.text,
-                  'avatar': 'assets/images/teacher_default.png',
-                  'roles': selectedRoles.isEmpty ? ['Subject Teacher'] : selectedRoles.toList(),
-                  'performance': {
-                    'attendance': 0,
-                    'studentFeedback': 0,
-                    'classPerformance': 0,
-                    'lastEvaluation': 'Not Yet Evaluated',
-                  },
-                };
-
-                setState(() {
-                  _teachers.add(newTeacher);
-                  _filteredTeachers = List.from(_teachers);
-                });
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Teacher added successfully')),
-                );
-              },
-              child: const Text('Add Teacher'),
-            ),
-          ],
         ),
       ),
-    );
+      );
+  }
+  
+  // Helper method to format API role names for display
+  String _formatRoleForDisplay(String apiRole) {
+    if (apiRole == "ClassTeacher") return "Class Teacher";
+    if (apiRole == "SubjectTeacher") return "Subject Teacher";
+    if (apiRole == "HeadTeacher") return "Head Teacher";
+    if (apiRole == "DepartmentHead") return "Department Head";
+    return apiRole;
   }
 
+  // Update the show edit teacher dialog to use the API
   void _showEditTeacherDialog(Map<String, dynamic> teacher) {
     final nameController = TextEditingController(text: teacher['name'] as String);
-    final emailController = TextEditingController(text: teacher['email'] as String);
     final phoneController = TextEditingController(text: teacher['phone'] as String);
-    final qualificationController = TextEditingController(text: teacher['qualification'] as String);
     
     // Selected subjects
     final selectedSubjects = Set<String>.from(teacher['subjects'] as List<String>);
-    final selectedRoles = Set<String>.from(teacher['roles'] as List<String>);
+    bool salaryPaid = teacher['salaryPaid'] ?? false;
 
     showDialog(
       context: context,
@@ -1496,20 +1849,19 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-                TextField(
                   controller: phoneController,
                   decoration: const InputDecoration(labelText: 'Phone Number'),
                   keyboardType: TextInputType.phone,
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: qualificationController,
-                  decoration: const InputDecoration(labelText: 'Qualification'),
+                CheckboxListTile(
+                  title: const Text("Salary Paid"),
+                  value: salaryPaid,
+                  onChanged: (bool? value) {
+                    setState(() {
+                      salaryPaid = value ?? false;
+                    });
+                  },
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -1543,36 +1895,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                         },
                       )).toList(),
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Teacher Roles:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    'Subject Teacher',
-                    'Class Teacher',
-                    'Department Head',
-                    'Lab Coordinator',
-                    'IT Coordinator',
-                    'Examination Coordinator',
-                    'Sports Coordinator'
-                  ].map((role) => FilterChip(
-                        label: Text(role),
-                        selected: selectedRoles.contains(role),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              selectedRoles.add(role);
-                            } else {
-                              selectedRoles.remove(role);
-                            }
-                          });
-                        },
-                      )).toList(),
-                ),
               ],
             ),
           ),
@@ -1582,40 +1904,54 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
-                if (nameController.text.isEmpty || emailController.text.isEmpty || selectedSubjects.isEmpty) {
+              onPressed: () async {
+                if (nameController.text.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please fill all required fields')),
                   );
                   return;
                 }
 
-                final index = _teachers.indexOf(teacher);
-                if (index != -1) {
-                  setState(() {
-                    _teachers[index]['name'] = nameController.text;
-                    _teachers[index]['email'] = emailController.text;
-                    _teachers[index]['phone'] = phoneController.text;
-                    _teachers[index]['qualification'] = qualificationController.text;
-                    _teachers[index]['subjects'] = selectedSubjects.toList();
-                    _teachers[index]['roles'] = selectedRoles.toList();
-                    _filteredTeachers = List.from(_teachers);
-                  });
+                try {
+                  Navigator.pop(context);
+                  setState(() => _isLoading = true);
+                  
+                  final teacherIdToUpdate = teacher['id'].toString(); // This 'id' is now MongoDB '_id'
+                  
+                  await _teacherService.updateTeacher(
+                    id: teacherIdToUpdate, 
+                    name: nameController.text,
+                    phone: phoneController.text,
+                    salaryPaid: salaryPaid,
+                    teachingSubs: selectedSubjects.toList(),
+                  );
+                  
+                  await _refreshTeachers();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Teacher updated successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  setState(() => _isLoading = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to update teacher: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
                 }
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Teacher updated successfully')),
-                );
               },
               child: const Text('Save Changes'),
             ),
           ],
         ),
       ),
-    );
+      );
   }
-
+  
   void _showAssignClassesDialog(Map<String, dynamic> teacher) {
     final availableClasses = ['Class 10A', 'Class 9B', 'Class 8C', 'Class 7D'];
     final selectedClasses = Set<String>.from(teacher['classes'] as List<String>);
@@ -1649,7 +1985,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 final index = _teachers.indexOf(teacher);
                 if (index != -1) {
                   setState(() {
@@ -1728,15 +2064,30 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              setState(() {
-                _teachers.remove(teacher);
-                _filteredTeachers = List.from(_teachers);
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Teacher deleted successfully')),
-              );
+            onPressed: () async {
+              try {
+                final teacherIdToDelete = teacher['id'].toString(); // This 'id' is now MongoDB '_id'
+                Navigator.pop(context);
+                setState(() => _isLoading = true);
+                
+                await _teacherService.deleteTeacher(teacherIdToDelete); // Pass _id to the service
+                await _refreshTeachers();
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Teacher deleted successfully'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to delete teacher: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: const Text('Delete'),
           ),
@@ -1745,68 +2096,42 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     );
   }
 
-  void _showManageRolesDialog(Map<String, dynamic> teacher) {
+  void _showManageRolesDialog(Map<String, dynamic> teacher) async {
     final availableRoles = [
-      'Subject Teacher', 
-      'Class Teacher',
-      'Class Teacher - Class 10A', 
-      'Class Teacher - Class 9B',
-      'Class Teacher - Class 8C',
-      'Class Teacher - Class 7D',
-      'Department Head - Science',
-      'Department Head - Languages',
-      'Department Head - Social Studies',
-      'Department Head - Mathematics',
-      'Lab Coordinator',
-      'IT Coordinator',
-      'Examination Coordinator',
-      'Sports Coordinator',
-      'Cultural Coordinator'
+      'SubjectTeacher', 
+      'ClassTeacher',
+      'DepartmentHead',
+      'HeadTeacher',
     ];
     
-    final selectedRoles = Set<String>.from((teacher['roles'] ?? <String>[]) as List<dynamic>);
+    String selectedRole = (teacher['roles'] as List<dynamic>).isNotEmpty 
+        ? teacher['roles'][0] 
+        : 'SubjectTeacher';
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: Text('Manage Roles for ${teacher['name']}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Assign roles to this teacher:',
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: availableRoles.map((role) => FilterChip(
-                    label: Text(role),
-                    selected: selectedRoles.contains(role),
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          // Handle mutually exclusive class teacher roles
-                          if (role.startsWith('Class Teacher - Class')) {
-                            selectedRoles.removeWhere((r) => r.startsWith('Class Teacher - Class'));
-                          }
-                          // Handle mutually exclusive department head roles
-                          if (role.startsWith('Department Head')) {
-                            selectedRoles.removeWhere((r) => r.startsWith('Department Head'));
-                          }
-                          selectedRoles.add(role);
-                        } else {
-                          selectedRoles.remove(role);
-                        }
-                      });
-                    },
-                  )).toList(),
-                ),
-              ],
-            ),
+          title: Text('Manage Role for ${teacher['name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select a role for this teacher:',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              ...availableRoles.map((role) => RadioListTile<String>(
+                title: Text(_formatRoleForDisplay(role)),
+                value: role,
+                groupValue: selectedRole,
+                onChanged: (String? value) {
+                  setState(() {
+                    selectedRole = value ?? 'SubjectTeacher';
+                  });
+                },
+              )).toList(),
+            ],
           ),
           actions: [
             TextButton(
@@ -1814,19 +2139,35 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
-                final index = _teachers.indexOf(teacher);
-                if (index != -1) {
-                  setState(() {
-                    _teachers[index]['roles'] = selectedRoles.toList();
-                    _filteredTeachers = List.from(_teachers);
-                  });
+              onPressed: () async {
+                try {
+                  Navigator.pop(context);
+                  setState(() => _isLoading = true);
+                  
+                  final teacherIdToUpdateRole = teacher['id'].toString(); // This 'id' is now MongoDB '_id'
+                  
+                  // await _teacherService.assignRole(
+                  //   _id: teacherIdToUpdateRole, // Pass _id to the service
+                  //   role: selectedRole,
+                  // );
+                  
+                  await _refreshTeachers();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Role updated successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  setState(() => _isLoading = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to update role: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
                 }
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Roles updated successfully')),
-                );
               },
               child: const Text('Save'),
             ),
@@ -1836,460 +2177,54 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     );
   }
   
-  void _showTeacherPerformance(Map<String, dynamic> teacher) {
-    final performance = teacher['performance'] as Map<String, dynamic>? ?? {
-      'attendance': 0,
-      'studentFeedback': 0,
-      'classPerformance': 0,
-      'lastEvaluation': 'Not Yet Evaluated',
-    };
+  void _showTeacherPerformance(Map<String, dynamic> teacher) async {
+    setState(() => _isLoading = true);
     
-    // Chart data
-    final monthlyData = [
-      {'month': 'Aug', 'value': 0.88},
-      {'month': 'Sep', 'value': 0.92},
-      {'month': 'Oct', 'value': 0.90},
-      {'month': 'Nov', 'value': 0.94},
-      {'month': 'Dec', 'value': 0.89},
-    ];
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (_, scrollController) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 10,
-                spreadRadius: 1,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: Column(
+    try {
+      final teacherId = teacher['id'].toString();
+      // Use the TeacherService to get performance data
+      final performance = await _teacherService.getTeacherPerformance(teacherId);
+      
+      setState(() => _isLoading = false);
+      
+      // Show simple dialog with only performance data
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Performance: ${teacher['name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Colorful header with gradient
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [_primaryColor, _primaryColor.withOpacity(0.7)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _primaryColor.withOpacity(0.5),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor: Colors.white,
-                          child: Text(
-                            teacher['name'].toString().substring(0, 1),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 24,
-                              color: _primaryColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${teacher['name']} Performance',
-                                style: const TextStyle(
-                                  fontSize: 22, 
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  shadows: [
-                                    Shadow(
-                                      offset: Offset(0, 1),
-                                      blurRadius: 3,
-                                      color: Color(0x70000000),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                'ID: ${teacher['id']} | ${teacher['qualification']}',
-                                style: const TextStyle(
-                                  fontSize: 14, 
-                                  color: Colors.white,
-                                  shadows: [
-                                    Shadow(
-                                      offset: Offset(0, 1),
-                                      blurRadius: 3,
-                                      color: Color(0x50000000),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Material(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(30),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(30),
-                            onTap: () => Navigator.pop(context),
-                            child: const Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Icon(
-                                Icons.close,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Key stats in the header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildHeaderStat(
-                          '${performance['attendance']}%',
-                          'Attendance',
-                          Icons.check_circle,
-                        ),
-                        _buildHeaderStat(
-                          '${performance['studentFeedback']}/5.0',
-                          'Student Rating',
-                          Icons.star,
-                        ),
-                        _buildHeaderStat(
-                          '${performance['classPerformance']}%',
-                          'Class Performance',
-                          Icons.school,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Content area
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-                  children: [
-                    // Controllers for editing performance metrics
-                    const Text(
-                      'Update Performance Metrics',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    Card(
-                      elevation: 2,
-                      shadowColor: Colors.blue.shade100,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          children: [
-                            _buildPerformanceMetric(
-                              context, 
-                              'Attendance Rate', 
-                              '${performance['attendance']}%',
-                              performance['attendance'] as num,
-                              Colors.blue,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPerformanceMetric(
-                              context, 
-                              'Student Feedback', 
-                              '${performance['studentFeedback']}/5.0',
-                              (performance['studentFeedback'] as num) / 5 * 100,
-                              Colors.green,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPerformanceMetric(
-                              context, 
-                              'Class Performance', 
-                              '${performance['classPerformance']}%',
-                              performance['classPerformance'] as num,
-                              Colors.orange,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Monthly attendance chart
-                    Card(
-                      elevation: 2,
-                      shadowColor: Colors.purple.shade100,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.date_range, color: Colors.purple.shade700),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Monthly Performance Trend',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Colors.purple.shade800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            SizedBox(
-                              height: 180,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: monthlyData.map((data) {
-                                  return Expanded(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          '${((data['value'] as double) * 100).toInt()}%',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: _primaryColor,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Container(
-                                          height: 120 * (data['value'] as double),
-                                          width: 20,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                _primaryColor,
-                                                _primaryColor.withOpacity(0.7),
-                                              ],
-                                              begin: Alignment.topCenter,
-                                              end: Alignment.bottomCenter,
-                                            ),
-                                            borderRadius: const BorderRadius.vertical(
-                                              top: Radius.circular(6)
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: _primaryColor.withOpacity(0.3),
-                                                blurRadius: 3,
-                                                offset: const Offset(0, 1),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          data['month'] as String,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: _primaryColor,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Performance update form
-                    Card(
-                      elevation: 2,
-                      shadowColor: Colors.orange.shade100,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.edit, color: Colors.orange.shade700),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Update Performance',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Colors.orange.shade800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            
-                            // We'll create a stateful builder for this form in a real app
-                            // For now, we'll just show the input fields
-                            TextField(
-                              decoration: InputDecoration(
-                                labelText: 'Attendance Rate (%)',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                prefixIcon: const Icon(Icons.check_circle),
-                              ),
-                              keyboardType: TextInputType.number,
-                              controller: TextEditingController(text: performance['attendance'].toString()),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              decoration: InputDecoration(
-                                labelText: 'Student Feedback (0-5)',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                prefixIcon: const Icon(Icons.star),
-                              ),
-                              keyboardType: TextInputType.number,
-                              controller: TextEditingController(text: performance['studentFeedback'].toString()),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              decoration: InputDecoration(
-                                labelText: 'Class Performance (%)',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                prefixIcon: const Icon(Icons.school),
-                              ),
-                              keyboardType: TextInputType.number,
-                              controller: TextEditingController(text: performance['classPerformance'].toString()),
-                            ),
-                            const SizedBox(height: 16),
-                            Center(
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.save),
-                                label: const Text('Save Performance Data'),
-                                onPressed: () {
-                                  // This would update the performance in a real app
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Performance updated successfully')),
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              Text('Total Classes: ${performance['totalClasses']}'),
+              const SizedBox(height: 8),
+              Text('Average Attendance: ${performance['avgAttendancePct']}%'),
+              const SizedBox(height: 8),
+              Text('Average Grade: ${performance['avgClassGrade']}'),
+              const SizedBox(height: 8),
+              Text('Pass Rate: ${performance['avgPassPct']}%'),
             ],
           ),
-        ),
-      ),
-      );
-  }
-  
-  Widget _buildHeaderStat(String value, String label, IconData icon) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: Colors.white, size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white.withOpacity(0.8),
-          ),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildPerformanceMetric(BuildContext context, String label, String value, num percentage, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 14)),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: percentage / 100,
-          backgroundColor: color.withOpacity(0.2),
-          valueColor: AlwaysStoppedAnimation<Color>(color),
-          minHeight: 8,
-          borderRadius: BorderRadius.circular(4),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load teacher performance: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
-      ],
-    );
+      );
+    }
   }
+  
+ 
   
   void _handleMenuAction(String action, Map<String, dynamic> teacher) {
     switch (action) {
@@ -2306,7 +2241,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
         _showAssignClassesDialog(teacher);
         break;
       case 'message':
-        _showSendMessageDialog(teacher);
+               _showSendMessageDialog(teacher);
         break;
       case 'performance':
         _showTeacherPerformance(teacher);

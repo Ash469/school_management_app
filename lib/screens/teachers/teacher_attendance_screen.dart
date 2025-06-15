@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
+import '../../services/class_services.dart';
+import '../../services/attendance_service.dart';
 import 'package:intl/intl.dart';
 
 class TeacherAttendanceScreen extends StatefulWidget {
@@ -22,6 +24,9 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
   final List<Map<String, dynamic>> _classes = [];
   Map<String, dynamic>? _selectedClass;
   DateTime _selectedDate = DateTime.now();
+  String? _errorMessage;
+  bool _hasExistingAttendance = false;
+  String? _existingAttendanceId;
   
   final DateFormat _dateFormat = DateFormat('MMM dd, yyyy');
   
@@ -41,103 +46,166 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
     const Color(0xFFE53935),
   ];
 
+  late ClassService _classService;
+  late AttendanceService _attendanceService;
+
   @override
   void initState() {
     super.initState();
     _selectedClass = widget.selectedClass;
+    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _attendanceService = AttendanceService(baseUrl: 'http://localhost:3000');
     _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
+      _errorMessage = null;
     });
     
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
-    
-    // Load classes if not already selected
-    if (_classes.isEmpty) {
+    try {
+      // Load classes from API
+      if (_classes.isEmpty) {
+        final classesData = await _classService.getAllClasses();
+        setState(() {
+          _classes.clear();
+          for (int i = 0; i < classesData.length; i++) {
+            final classData = classesData[i];
+            _classes.add({
+              'id': classData['_id'] ?? '',
+              'name': '${classData['grade'] ?? 'N/A'} ${classData['section'] ?? 'N/A'}',
+              'subject': classData['subjects']?.isNotEmpty == true 
+                  ? classData['subjects'][0] 
+                  : 'General',
+              'color': _classColors[i % _classColors.length],
+              'fullData': classData,
+            });
+          }
+        });
+      }
+      
+      if (_selectedClass != null) {
+        await _loadStudentsForClass(_selectedClass!['id']);
+      }
+    } catch (e) {
       setState(() {
-        _classes.addAll([
-          {
-            'id': '10A',
-            'name': 'Class 10A',
-            'subject': 'Mathematics',
-            'color': _classColors[0],
-          },
-          {
-            'id': '9B',
-            'name': 'Class 9B',
-            'subject': 'Mathematics',
-            'color': _classColors[1],
-          },
-          {
-            'id': '8C',
-            'name': 'Class 8C',
-            'subject': 'Physics',
-            'color': _classColors[2],
-          },
-        ]);
+        _errorMessage = e.toString();
+      });
+      print('Error loading data: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
       });
     }
-    
-    if (_selectedClass != null) {
-      await _loadStudentsForClass(_selectedClass!['id']);
-    }
-    
-    setState(() {
-      _isLoading = false;
-    });
   }
   
   Future<void> _loadStudentsForClass(String classId) async {
-    // Clear previous student data
     setState(() {
       _students.clear();
       _isLoading = true;
+      _errorMessage = null;
+      _hasExistingAttendance = false;
+      _existingAttendanceId = null;
     });
     
-    // Simulate API call
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    // Load mock student data based on class
-    List<Map<String, dynamic>> studentsData = [];
-    
-    switch (classId) {
-      case '10A':
-        studentsData = [
-          {'id': '1001', 'name': 'Alice Johnson', 'present': true},
-          {'id': '1002', 'name': 'Bob Smith', 'present': true},
-          {'id': '1003', 'name': 'Carol White', 'present': false},
-          {'id': '1004', 'name': 'David Brown', 'present': true},
-          {'id': '1005', 'name': 'Eva Green', 'present': true},
-        ];
-        break;
-      case '9B':
-        studentsData = [
-          {'id': '2001', 'name': 'Frank Black', 'present': false},
-          {'id': '2002', 'name': 'Grace Lee', 'present': true},
-          {'id': '2003', 'name': 'Henry Wilson', 'present': true},
-          {'id': '2004', 'name': 'Irene Adams', 'present': false},
-        ];
-        break;
-      case '8C':
-        studentsData = [
-          {'id': '3001', 'name': 'Jack Davies', 'present': true},
-          {'id': '3002', 'name': 'Karen Miller', 'present': true},
-          {'id': '3003', 'name': 'Leo Taylor', 'present': true},
-          {'id': '3004', 'name': 'Maria Garcia', 'present': false},
-          {'id': '3005', 'name': 'Noah Wilson', 'present': true},
-          {'id': '3006', 'name': 'Olivia Moore', 'present': false},
-        ];
-        break;
+    try {
+      // First, get all students for the selected class
+      final studentsData = await _classService.getClassStudents(classId);
+      
+      // Populate students list with default values (not marked present initially)
+      setState(() {
+        _students.clear();
+        for (final studentData in studentsData) {
+          _students.add({
+            'id': studentData['studentId'] ?? studentData['_id'] ?? '',
+            '_id': studentData['_id'] ?? '', // Store the actual _id from API
+            'name': studentData['name'] ?? 'Unknown Student',
+            'present': false, // Default to not marked (absent)
+            'fullData': studentData,
+          });
+        }
+      });
+
+      // Now check if attendance exists for this class and date
+      await _checkExistingAttendance(classId);
+      
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error loading students: ${e.toString()}';
+      });
+      print('Error loading students: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
-    
-    setState(() {
-      _students.addAll(studentsData);
-      _isLoading = false;
-    });
+  }
+
+  Future<void> _checkExistingAttendance(String classId) async {
+    try {
+      // Format the date for the API call
+      final formattedDate = AttendanceService.formatDate(_selectedDate);
+      
+      print('📋 Checking attendance for class: $classId, date: $formattedDate');
+      
+      // Call attendance API to check if attendance exists for this class and date
+      final attendanceRecords = await _attendanceService.getClassAttendance(
+        classId: classId,
+        date: formattedDate,
+      );
+      
+      if (attendanceRecords.isNotEmpty) {
+        // Found existing attendance record
+        final existingAttendance = attendanceRecords.first;
+        
+        setState(() {
+          _hasExistingAttendance = true;
+          _existingAttendanceId = existingAttendance['_id'];
+          
+          // Create a map of student attendance status from existing data
+          final attendanceMap = <String, bool>{};
+          if (existingAttendance['entries'] != null) {
+            for (final entry in existingAttendance['entries']) {
+              // Check both _id and studentId fields for matching
+              final entryStudentId = entry['studentId'];
+              attendanceMap[entryStudentId] = entry['status'] == 'present';
+            }
+          }
+          
+          // Update students with their attendance status from the record
+          for (int i = 0; i < _students.length; i++) {
+            final studentId = _students[i]['_id']; // Use _id for matching
+            final altStudentId = _students[i]['id']; // Also check alternative ID
+            
+            if (attendanceMap.containsKey(studentId)) {
+              _students[i]['present'] = attendanceMap[studentId]!;
+            } else if (attendanceMap.containsKey(altStudentId)) {
+              _students[i]['present'] = attendanceMap[altStudentId]!;
+            }
+            // If student not found in attendance record, keep as false (absent)
+          }
+        });
+        
+        print('📋 Found existing attendance with ${existingAttendance['entries']?.length ?? 0} entries');
+      } else {
+        // No existing attendance found for this date
+        setState(() {
+          _hasExistingAttendance = false;
+          _existingAttendanceId = null;
+          // Keep all students as false (not marked)
+        });
+        
+        print('📋 No existing attendance found for this date');
+      }
+    } catch (e) {
+      print('📋 Error checking existing attendance: $e');
+      // Don't throw error here, just log it and continue with no existing attendance
+      setState(() {
+        _hasExistingAttendance = false;
+        _existingAttendanceId = null;
+      });
+    }
   }
 
   @override
@@ -156,21 +224,115 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
             icon: const Icon(Icons.calendar_today),
             onPressed: _selectDate,
           ),
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _saveAttendance,
-          ),
+          if (_selectedClass != null && _students.isNotEmpty)
+            IconButton(
+              icon: Icon(_hasExistingAttendance ? Icons.edit : Icons.save),
+              onPressed: _saveAttendance,
+            ),
         ],
       ),
-      body: _isLoading
-        ? Center(child: CircularProgressIndicator(color: _primaryColor))
-        : _selectedClass == null 
-            ? _buildClassSelectionScreen()
-            : _buildAttendanceScreen(),
+      body: _buildBody(),
     );
   }
   
+  Widget _buildBody() {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator(color: _primaryColor));
+    }
+    
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red.shade300,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: _textPrimaryColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _textSecondaryColor,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return _selectedClass == null 
+        ? _buildClassSelectionScreen()
+        : _buildAttendanceScreen();
+  }
+  
   Widget _buildClassSelectionScreen() {
+    if (_classes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.class_,
+              size: 64,
+              color: _textSecondaryColor.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No Classes Found',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: _textPrimaryColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please check your connection and try again',
+              style: TextStyle(
+                color: _textSecondaryColor,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -194,7 +356,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 elevation: 2,
-                color: _cardColor, // Using white background color
+                color: _cardColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -204,7 +366,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                     backgroundColor: classData['color'],
                     radius: 25,
                     child: Text(
-                      classData['id'],
+                      classData['name'].split(' ').first,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -276,6 +438,32 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                           color: _textPrimaryColor,
                         ),
                       ),
+                      if (_hasExistingAttendance) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle, size: 16, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Recorded',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   OutlinedButton.icon(
@@ -290,12 +478,41 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                'Students: ${_students.length}',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: _textSecondaryColor,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Students: ${_students.length}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: _textSecondaryColor,
+                    ),
+                  ),
+                  if (_students.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _markAllPresent(true),
+                          icon: const Icon(Icons.check_circle, size: 16),
+                          label: const Text('All Present'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.green,
+                            textStyle: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _markAllPresent(false),
+                          icon: const Icon(Icons.cancel, size: 16),
+                          label: const Text('All Absent'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            textStyle: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -318,6 +535,13 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: _textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'This class has no enrolled students',
+                      style: TextStyle(
+                        color: _textSecondaryColor,
                       ),
                     ),
                   ],
@@ -380,57 +604,58 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                 },
               ),
         ),
-        Container(
-          padding: const EdgeInsets.all(16.0),
-          decoration: BoxDecoration(
-            color: _cardColor,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
-                spreadRadius: 1,
-                blurRadius: 5,
-                offset: const Offset(0, -3),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Present: ${_students.where((s) => s['present']).length}/${_students.length}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _textPrimaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Absent: ${_students.where((s) => !s['present']).length}/${_students.length}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _textPrimaryColor,
-                    ),
-                  ),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: _saveAttendance,
-                icon: const Icon(Icons.save),
-                label: const Text('Save Attendance'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        if (_students.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.2),
+                  spreadRadius: 1,
+                  blurRadius: 5,
+                  offset: const Offset(0, -3),
                 ),
-              ),
-            ],
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Present: ${_students.where((s) => s['present']).length}/${_students.length}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Absent: ${_students.where((s) => !s['present']).length}/${_students.length}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _textPrimaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  onPressed: _saveAttendance,
+                  icon: Icon(_hasExistingAttendance ? Icons.edit : Icons.save),
+                  label: Text(_hasExistingAttendance ? 'Update Attendance' : 'Save Attendance'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -457,25 +682,95 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        // In a real app, you would reload attendance data for the selected date
       });
+      // When date changes, check attendance for the new date
+      if (_selectedClass != null) {
+        await _checkExistingAttendance(_selectedClass!['id']);
+      }
     }
   }
   
   void _selectClass() {
     setState(() {
       _selectedClass = null;
+      _students.clear();
     });
   }
 
-  void _saveAttendance() {
-    // Save attendance data to backend
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Attendance saved successfully'),
-        backgroundColor: _primaryColor,
-      ),
-    );
+  void _saveAttendance() async {
+    if (_students.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No students to save attendance for')),
+      );
+      return;
+    }
+
+    if (_selectedClass == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No class selected')),
+      );
+      return;
+    }
+
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: CircularProgressIndicator(color: _primaryColor),
+        ),
+      );
+
+      // Format attendance data for API
+      final attendanceData = AttendanceService.formatAttendanceData(_students);
+      final formattedDate = AttendanceService.formatDate(_selectedDate);
+
+      if (_hasExistingAttendance && _existingAttendanceId != null) {
+        // Update existing attendance record
+        await _attendanceService.updateAttendance(
+          attendanceId: _existingAttendanceId!,
+          attendanceData: attendanceData,
+        );
+      } else {
+        // Create new attendance record
+        await _attendanceService.markAttendance(
+          classId: _selectedClass!['id'],
+          date: formattedDate,
+          attendanceData: attendanceData,
+        );
+      }
+
+      // Hide loading indicator
+      Navigator.of(context).pop();
+
+      final presentCount = _students.where((s) => s['present']).length;
+      final totalCount = _students.length;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_hasExistingAttendance 
+            ? 'Attendance updated successfully ($presentCount/$totalCount present)'
+            : 'Attendance recorded successfully ($presentCount/$totalCount present)'),
+          backgroundColor: _primaryColor,
+        ),
+      );
+
+      // Refresh the data to show updated status
+      _loadStudentsForClass(_selectedClass!['id']);
+    } catch (e) {
+      // Hide loading indicator
+      Navigator.of(context).pop();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_hasExistingAttendance 
+            ? 'Failed to update attendance: ${e.toString()}'
+            : 'Failed to save attendance: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _markAllPresent(bool present) {
@@ -484,18 +779,5 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         student['present'] = present;
       }
     });
-  }
-
-  void _viewAttendanceHistory() {
-    if (_selectedClass == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a class first')),
-      );
-      return;
-    }
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Attendance history will be available soon')),
-    );
   }
 }

@@ -1,89 +1,76 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import '../../utils/app_theme.dart';
+import '../../services/schedule_service.dart';
+import '../../services/class_services.dart';
+import '../../services/teacher_service.dart';
 
 class ScheduleManagementScreen extends StatefulWidget {
-  const ScheduleManagementScreen({Key? key}) : super(key: key);
+  const ScheduleManagementScreen({super.key});
 
   @override
-  State<ScheduleManagementScreen> createState() => _ScheduleManagementScreenState();
+  _ScheduleManagementScreenState createState() => _ScheduleManagementScreenState();
 }
 
-class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> with SingleTickerProviderStateMixin {
+class _ScheduleManagementScreenState extends State<ScheduleManagementScreen>
+    with SingleTickerProviderStateMixin {
+  late ScheduleService _scheduleService;
+  late ClassService _classService;
+  late TeacherService _teacherService;
   late TabController _tabController;
-  final List<String> _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  final Map<String, Map<String, List<PeriodSchedule>>> _schedules = {};
-  
-  // List of available classes
-  final List<String> _classes = ['9A', '9B', '10A', '10B', '11A', '11B', '12A', '12B'];
-  String _selectedClass = '9A';
   
   // Theme colors
-  final Color _primaryColor = const Color(0xFF1A237E); // Deep indigo
-  final Color _accentColor = const Color(0xFF4CAF50); // Green
-  final Color _cardColor = const Color(0xFFE3F2FD); // Light blue
-  final Color _dropdownColor = const Color(0xFFFFD54F); // Amber color for dropdown
+  late Color _primaryColor;
+  late Color _accentColor;
+  late Color _tertiaryColor;
+
+  // State variables
+  bool _isLoading = true;
+  bool _isCreatingSchedule = false;
   
+  // Data storage
+  List<Map<String, dynamic>> _availableClasses = [];
+  List<Map<String, dynamic>> _classTeachers = [];
+  List<String> _classSubjects = [];
+  List<Map<String, dynamic>> _existingSchedules = [];
+  
+  // Selection state for view tab
+  String? _selectedViewClassId;
+  Map<String, dynamic>? _selectedViewClass;
+  Map<String, dynamic>? _viewSchedule;
+  
+  // Selection state for create/edit tab
+  String? _selectedClassId;
+  Map<String, dynamic>? _selectedClass;
+  List<Map<String, dynamic>> _periods = [];
+  Map<String, dynamic>? _existingScheduleForClass;
+  bool _isUpdateMode = false;
+  String? _scheduleIdToUpdate;
+  
+  // Constants
+  final List<String> _daysOfWeek = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+  ];
+  
+  final List<Map<String, String>> _timeSlots = [
+    {'period': '1', 'start': '09:00', 'end': '09:45'},
+    {'period': '2', 'start': '09:45', 'end': '10:30'},
+    {'period': '3', 'start': '10:45', 'end': '11:30'},
+    {'period': '4', 'start': '11:30', 'end': '12:15'},
+    {'period': '5', 'start': '01:00', 'end': '01:45'},
+    {'period': '6', 'start': '01:45', 'end': '02:30'},
+    {'period': '7', 'start': '02:45', 'end': '03:30'},
+    {'period': '8', 'start': '03:30', 'end': '04:15'},
+  ];
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _days.length, vsync: this);
-    
-    // Initialize with sample data for each class
-    for (var day in _days) {
-      _schedules[day] = {};
-      
-      for (var className in _classes) {
-        if (day == 'Monday') {
-          if (className == '9A') {
-            _schedules[day]![className] = [
-              PeriodSchedule(period: 1, startTime: '8:00 AM', endTime: '9:00 AM', subject: 'Physics', teacher: 'Dr. Brown', classGroup: className),
-              PeriodSchedule(period: 2, startTime: '9:10 AM', endTime: '10:10 AM', subject: 'English', teacher: 'Ms. Smith', classGroup: className),
-              PeriodSchedule(period: 3, startTime: '10:20 AM', endTime: '11:20 AM', subject: 'Geography', teacher: 'Mr. Thomas', classGroup: className),
-              PeriodSchedule(period: 4, startTime: '11:30 AM', endTime: '12:30 PM', subject: 'History', teacher: 'Mrs. Davis', classGroup: className),
-            ];
-          } else if (className == '9B') {
-            _schedules[day]![className] = [
-              PeriodSchedule(period: 1, startTime: '8:00 AM', endTime: '9:00 AM', subject: 'Chemistry', teacher: 'Dr. Wilson', classGroup: className),
-              PeriodSchedule(period: 2, startTime: '9:10 AM', endTime: '10:10 AM', subject: 'Mathematics', teacher: 'Mr. Johnson', classGroup: className),
-              PeriodSchedule(period: 3, startTime: '10:20 AM', endTime: '11:20 AM', subject: 'Biology', teacher: 'Ms. Anderson', classGroup: className),
-              PeriodSchedule(period: 4, startTime: '11:30 AM', endTime: '12:30 PM', subject: 'Physical Education', teacher: 'Mr. Clark', classGroup: className),
-            ];
-          } else {
-            _schedules[day]![className] = _createDefaultSchedule(className);
-          }
-        } else if (day == 'Tuesday') {
-          if (className == '9A') {
-            _schedules[day]![className] = [
-              PeriodSchedule(period: 1, startTime: '8:00 AM', endTime: '9:00 AM', subject: 'Mathematics', teacher: 'Mr. Johnson', classGroup: className),
-              PeriodSchedule(period: 2, startTime: '9:10 AM', endTime: '10:10 AM', subject: 'Chemistry', teacher: 'Dr. Wilson', classGroup: className),
-              PeriodSchedule(period: 3, startTime: '10:20 AM', endTime: '11:20 AM', subject: 'Biology', teacher: 'Ms. Anderson', classGroup: className),
-              PeriodSchedule(period: 4, startTime: '11:30 AM', endTime: '12:30 PM', subject: 'Computer Science', teacher: 'Mrs. Evans', classGroup: className),
-            ];
-          } else if (className == '9B') {
-            _schedules[day]![className] = [
-              PeriodSchedule(period: 1, startTime: '8:00 AM', endTime: '9:00 AM', subject: 'Physics', teacher: 'Dr. Brown', classGroup: className),
-              PeriodSchedule(period: 2, startTime: '9:10 AM', endTime: '10:10 AM', subject: 'English', teacher: 'Ms. Smith', classGroup: className),
-              PeriodSchedule(period: 3, startTime: '10:20 AM', endTime: '11:20 AM', subject: 'History', teacher: 'Mrs. Davis', classGroup: className),
-              PeriodSchedule(period: 4, startTime: '11:30 AM', endTime: '12:30 PM', subject: 'Geography', teacher: 'Mr. Thomas', classGroup: className),
-            ];
-          } else {
-            _schedules[day]![className] = _createDefaultSchedule(className);
-          }
-        } else {
-          _schedules[day]![className] = _createDefaultSchedule(className);
-        }
-      }
-    }
-  }
-
-  List<PeriodSchedule> _createDefaultSchedule(String className) {
-    return [
-      PeriodSchedule(period: 1, startTime: '8:00 AM', endTime: '9:00 AM', subject: '', teacher: '', classGroup: className),
-      PeriodSchedule(period: 2, startTime: '9:10 AM', endTime: '10:10 AM', subject: '', teacher: '', classGroup: className),
-      PeriodSchedule(period: 3, startTime: '10:20 AM', endTime: '11:20 AM', subject: '', teacher: '', classGroup: className),
-      PeriodSchedule(period: 4, startTime: '11:30 AM', endTime: '12:30 PM', subject: '', teacher: '', classGroup: className),
-    ];
+    _tabController = TabController(length: 2, vsync: this);
+    _loadThemeColors();
+    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
+    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+    _loadInitialData();
   }
 
   @override
@@ -92,408 +79,859 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> wit
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: _primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 2,
-        title: const Text('Schedule Management', style: TextStyle(fontWeight: FontWeight.bold)),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          indicatorColor: _accentColor,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-          tabs: _days.map((day) => Tab(text: day)).toList(),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            tooltip: 'Share Schedule',
-            onPressed: _shareSchedule,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Add Period',
-            onPressed: () => _addEditPeriod(context),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  spreadRadius: 1,
-                  blurRadius: 3,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Text('Select Class: ', 
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _primaryColor, width: 1),
-                    color: _dropdownColor,
-                  ),
-                  child: DropdownButton<String>(
-                    value: _selectedClass,
-                    icon: Icon(Icons.arrow_drop_down, color: _primaryColor),
-                    underline: Container(),
-                    isDense: true,
-                    dropdownColor: _dropdownColor,
-                    items: _classes.map((String className) {
-                      return DropdownMenuItem<String>(
-                        value: className,
-                        child: Text(className, style: TextStyle(
-                          fontWeight: _selectedClass == className ? FontWeight.bold : FontWeight.normal,
-                          color: _primaryColor,
-                          fontSize: 16,
-                        )),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          _selectedClass = newValue;
-                        });
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: _days.map((day) {
-                return _buildDaySchedule(day, _selectedClass);
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.save),
-        label: const Text('Save'),
-        backgroundColor: _accentColor,
-        onPressed: _saveSchedule,
-        tooltip: 'Save Schedule',
-      ),
+  void _loadThemeColors() {
+    _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
+    _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
+    _tertiaryColor = AppTheme.getTertiaryColor(AppTheme.defaultTheme);
+  }
+
+  Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      await _loadAvailableClasses();
+      await _loadExistingSchedules();
+    } catch (e) {
+      _showErrorSnackBar('Failed to load initial data: ${e.toString()}');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadAvailableClasses() async {
+    try {
+      final classes = await _classService.getAllClasses();
+      setState(() {
+        _availableClasses = classes;
+      });
+      print('📅 Loaded ${classes.length} classes');
+    } catch (e) {
+      print('❌ Error loading classes: $e');
+      throw e;
+    }
+  }
+
+  Future<void> _loadExistingSchedules() async {
+    try {
+      final schedules = await _scheduleService.getAllSchedules();
+      setState(() {
+        _existingSchedules = schedules;
+      });
+      print('📅 Loaded ${schedules.length} existing schedules');
+    } catch (e) {
+      print('❌ Error loading schedules: $e');
+    }
+  }
+
+  // View Schedule Methods
+  Future<void> _selectClassForView(String classId) async {
+    final selectedClass = _availableClasses.firstWhere((c) => c['_id'] == classId);
+    
+    setState(() {
+      _selectedViewClassId = classId;
+      _selectedViewClass = selectedClass;
+      _viewSchedule = null;
+      _isLoading = true;
+    });
+    
+    await _loadScheduleForClass(classId);
+  }
+
+  Future<void> _loadScheduleForClass(String classId) async {
+    try {
+      print('📅 Loading schedule for classId: $classId');
+      final schedules = await _scheduleService.getSchedulesByClassId(classId);
+      
+      setState(() {
+        if (schedules.isNotEmpty) {
+          _viewSchedule = schedules.first;
+          print('📅 Found schedule with ${_viewSchedule!['periods']?.length ?? 0} periods');
+          print('📅 Schedule data: $_viewSchedule');
+        } else {
+          _viewSchedule = null;
+          print('📅 No schedule found for this class');
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('📅 Error loading schedule: $e');
+      setState(() {
+        _viewSchedule = null;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _editSchedule() {
+    if (_viewSchedule != null && _selectedViewClassId != null) {
+      // Switch to create/edit tab and pre-populate data
+      _tabController.animateTo(1);
+      _selectClassForEdit(_selectedViewClassId!);
+    }
+  }
+
+  // Create/Edit Schedule Methods
+  Future<void> _selectClassForEdit(String classId) async {
+    final selectedClass = _availableClasses.firstWhere((c) => c['_id'] == classId);
+    
+    setState(() {
+      _selectedClassId = classId;
+      _selectedClass = selectedClass;
+      _periods.clear();
+      _existingScheduleForClass = null;
+      _isUpdateMode = false;
+      _scheduleIdToUpdate = null;
+    });
+    
+    await _loadClassDetails(classId);
+    await _checkExistingSchedule(classId);
+  }
+
+  Future<void> _loadClassDetails(String classId) async {
+    setState(() => _isLoading = true);
+    
+    try {
+      print('📅 Loading class details for classId: $classId');
+      
+      final results = await Future.wait([
+        _classService.getClassTeachers(classId),
+        _classService.getClassSubjects(classId).catchError((error) {
+          print('📅 Warning: Failed to load subjects: $error');
+          return <String>[];
+        }),
+      ]);
+      
+      setState(() {
+        _classTeachers = results[0] as List<Map<String, dynamic>>;
+        _classSubjects = results[1] as List<String>;
+      });
+      
+      print('📅 Loaded ${_classTeachers.length} teachers and ${_classSubjects.length} subjects for class');
+      
+    } catch (e) {
+      print('📅 Error loading class details: $e');
+      _showErrorSnackBar('Failed to load class details: ${e.toString()}');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _checkExistingSchedule(String classId) async {
+    try {
+      print('📅 Checking for existing schedule for classId: $classId');
+      final schedules = await _scheduleService.getSchedulesByClassId(classId);
+      
+      if (schedules.isNotEmpty) {
+        final existingSchedule = schedules.first;
+        setState(() {
+          _existingScheduleForClass = existingSchedule;
+          _isUpdateMode = true;
+          _scheduleIdToUpdate = existingSchedule['_id'];
+        });
+        
+        _loadExistingPeriods(existingSchedule);
+        print('📅 Found existing schedule for class. Schedule ID: ${existingSchedule['_id']}');
+      } else {
+        setState(() {
+          _existingScheduleForClass = null;
+          _isUpdateMode = false;
+          _scheduleIdToUpdate = null;
+        });
+        print('📅 No existing schedule found for this class');
+      }
+    } catch (e) {
+      print('📅 Error checking existing schedule: $e');
+    }
+  }
+
+  void _loadExistingPeriods(Map<String, dynamic> schedule) {
+    if (schedule['periods'] != null) {
+      final periods = schedule['periods'] as List<dynamic>;
+      setState(() {
+        _periods = periods.map((period) => {
+          'dayOfWeek': period['dayOfWeek'],
+          'periodNumber': period['periodNumber'],
+          'subject': period['subject'],
+          'teacherId': _getTeacherIdFromData(period['teacherId']),
+          'startTime': period['startTime'],
+          'endTime': period['endTime'],
+        }).toList();
+      });
+      print('📅 Loaded ${_periods.length} existing periods');
+    }
+  }
+
+  void _addPeriod() {
+    if (_selectedClassId == null) {
+      _showErrorSnackBar('Please select a class first');
+      return;
+    }
+    
+    if (_classTeachers.isEmpty || _classSubjects.isEmpty) {
+      _showErrorSnackBar('Class must have teachers and subjects assigned');
+      return;
+    }
+    
+    _showAddPeriodDialog();
+  }
+
+  // Add new method to edit existing period
+  void _editPeriod(int periodIndex) {
+    if (_selectedClassId == null) {
+      _showErrorSnackBar('Please select a class first');
+      return;
+    }
+    
+    if (_classTeachers.isEmpty || _classSubjects.isEmpty) {
+      _showErrorSnackBar('Class must have teachers and subjects assigned');
+      return;
+    }
+    
+    final period = _periods[periodIndex];
+    _showAddPeriodDialog(
+      editingIndex: periodIndex,
+      existingPeriod: period,
     );
   }
 
-  Widget _buildDaySchedule(String day, String className) {
-    final classSchedule = _schedules[day]?[className] ?? [];
-    
-    if (classSchedule.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.event_busy, size: 80, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'No schedule for this day and class',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Add Period'),
-              onPressed: () => _addEditPeriod(context, day: day, className: className),
-            ),
-          ],
-        ),
-      );
+  void _showAddPeriodDialog({int? editingIndex, Map<String, dynamic>? existingPeriod, String? preSelectedDay}) {
+    if (_classSubjects.isEmpty) {
+      _showErrorSnackBar('No subjects available for this class. Please add subjects first.');
+      return;
     }
     
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: classSchedule.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final schedule = classSchedule[index];
-        return Card(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: _primaryColor.withOpacity(0.2), width: 1),
+    if (_classTeachers.isEmpty) {
+      _showErrorSnackBar('No teachers available for this class. Please assign teachers first.');
+      return;
+    }
+    
+    // Initialize with existing data if editing, otherwise use defaults
+    String selectedDay = existingPeriod?['dayOfWeek'] ?? preSelectedDay ?? _daysOfWeek[0];
+    int selectedPeriod = existingPeriod?['periodNumber'] ?? 1;
+    String selectedSubject = existingPeriod?['subject'] ?? _classSubjects[0];
+    String selectedTeacherId = existingPeriod?['teacherId'] ?? _classTeachers[0]['_id'];
+    
+    // Validate that existing values are still valid
+    if (!_daysOfWeek.contains(selectedDay)) {
+      selectedDay = _daysOfWeek[0];
+    }
+    if (!_classSubjects.contains(selectedSubject)) {
+      selectedSubject = _classSubjects[0];
+    }
+    if (!_classTeachers.any((t) => t['_id'] == selectedTeacherId)) {
+      selectedTeacherId = _classTeachers[0]['_id'];
+    }
+    
+    final isEditing = editingIndex != null;
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                isEditing ? Icons.edit : Icons.access_time, 
+                color: _primaryColor,
+              ),
+              const SizedBox(width: 8),
+              Text(isEditing ? 'Edit Period' : 'Add Period'),
+            ],
           ),
-          color: _cardColor,
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
+          content: SizedBox(
+            width: double.maxFinite,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: _primaryColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Period ${schedule.period}', 
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold, 
-                          color: Colors.white,
-                          fontSize: 16
-                        )
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${schedule.startTime} - ${schedule.endTime}',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-                ListTile(
-                  contentPadding: const EdgeInsets.all(8),
-                  title: Text(
-                    schedule.subject.isEmpty ? "No Subject Assigned" : schedule.subject,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      color: Colors.black87,
-                      letterSpacing: 0.5,
-                      shadows: [
-                        Shadow(
-                          blurRadius: 1.0,
-                          color: Colors.grey.withOpacity(0.5),
-                          offset: const Offset(0.5, 0.5),
+                // Show current period info if editing
+                if (isEditing) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info, color: Colors.orange, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Editing: ${existingPeriod!['dayOfWeek']} Period ${existingPeriod['periodNumber']}',
+                            style: const TextStyle(
+                              color: Colors.orange,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.person, size: 18, color: Colors.indigo),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Teacher: ${schedule.teacher.isEmpty ? "Not Assigned" : schedule.teacher}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.class_, size: 18, color: Colors.indigo),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Class: ${schedule.classGroup}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                ],
+                
+                DropdownButtonFormField<String>(
+                  value: selectedDay,
+                  decoration: InputDecoration(
+                    labelText: 'Day of Week',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.calendar_today, color: _accentColor),
                   ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.edit, color: _accentColor),
-                        onPressed: () => _addEditPeriod(context, day: day, existingSchedule: schedule, className: className),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () => _confirmDeletePeriod(day, className, index),
-                      ),
-                    ],
+                  items: _daysOfWeek.map((day) => DropdownMenuItem(
+                    value: day,
+                    child: Text(day),
+                  )).toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedDay = value!);
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                DropdownButtonFormField<int>(
+                  value: selectedPeriod,
+                  decoration: InputDecoration(
+                    labelText: 'Period Number',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.schedule, color: _accentColor),
                   ),
-                  isThreeLine: true,
+                  items: _timeSlots.map((slot) => DropdownMenuItem(
+                    value: int.parse(slot['period']!),
+                    child: Text('Period ${slot['period']} (${slot['start']} - ${slot['end']})'),
+                  )).toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedPeriod = value!);
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                DropdownButtonFormField<String>(
+                  value: _classSubjects.contains(selectedSubject) ? selectedSubject : null,
+                  decoration: InputDecoration(
+                    labelText: 'Subject',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.book, color: _accentColor),
+                  ),
+                  items: _classSubjects.map((subject) => DropdownMenuItem(
+                    value: subject,
+                    child: Text(subject),
+                  )).toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedSubject = value!);
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                DropdownButtonFormField<String>(
+                  value: _classTeachers.any((t) => t['_id'] == selectedTeacherId) ? selectedTeacherId : null,
+                  decoration: InputDecoration(
+                    labelText: 'Teacher',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person, color: _accentColor),
+                  ),
+                  items: _classTeachers.map<DropdownMenuItem<String>>((teacher) => DropdownMenuItem<String>(
+                    value: teacher['_id'],
+                    child: Text(teacher['name'] ?? 'Unknown Teacher'),
+                  )).toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedTeacherId = value!);
+                  },
                 ),
               ],
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (isEditing) {
+                  _updatePeriodInSchedule(
+                    editingIndex!,
+                    selectedDay,
+                    selectedPeriod,
+                    selectedSubject,
+                    selectedTeacherId,
+                  );
+                } else {
+                  _addPeriodToSchedule(
+                    selectedDay,
+                    selectedPeriod,
+                    selectedSubject,
+                    selectedTeacherId,
+                  );
+                }
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isEditing ? Colors.orange : _primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(isEditing ? 'Update Period' : 'Add Period'),
+            ),
+          ],
+        ),
+      ),
+      );
+  }
+
+  // Add new method to update existing period
+  void _updatePeriodInSchedule(
+    int editingIndex,
+    String day,
+    int periodNumber,
+    String subject,
+    String teacherId,
+  ) {
+    // Check for conflicts with other periods (excluding the one being edited)
+    final conflict = _periods.asMap().entries.any((entry) {
+      final index = entry.key;
+      final period = entry.value;
+      return index != editingIndex &&
+             period['dayOfWeek'] == day &&
+             period['periodNumber'] == periodNumber;
+    });
+    
+    if (conflict) {
+      _showErrorSnackBar('Period conflict: $day Period $periodNumber already exists');
+      return;
+    }
+    
+    final timeSlot = _timeSlots.firstWhere((slot) => slot['period'] == periodNumber.toString());
+    
+    final updatedPeriod = {
+      'dayOfWeek': day,
+      'periodNumber': periodNumber,
+      'subject': subject,
+      'teacherId': teacherId,
+      'startTime': timeSlot['start'],
+      'endTime': timeSlot['end'],
+    };
+    
+    setState(() {
+      _periods[editingIndex] = updatedPeriod;
+    });
+    
+    _showSuccessSnackBar('Period updated successfully');
+  }
+
+  void _addPeriodToSchedule(String day, int periodNumber, String subject, String teacherId) {
+    final conflict = _periods.any((period) =>
+        period['dayOfWeek'] == day && period['periodNumber'] == periodNumber);
+    
+    if (conflict) {
+      _showErrorSnackBar('Period conflict: $day Period $periodNumber already exists');
+      return;
+    }
+    
+    final timeSlot = _timeSlots.firstWhere((slot) => slot['period'] == periodNumber.toString());
+    
+    final newPeriod = {
+      'dayOfWeek': day,
+      'periodNumber': periodNumber,
+      'subject': subject,
+      'teacherId': teacherId,
+      'startTime': timeSlot['start'],
+      'endTime': timeSlot['end'],
+    };
+    
+    setState(() {
+      _periods.add(newPeriod);
+    });
+    
+    _showSuccessSnackBar('Period added successfully');
+  }
+
+  void _removePeriod(int index) {
+    setState(() {
+      _periods.removeAt(index);
+    });
+    _showSuccessSnackBar('Period removed');
+  }
+
+  Future<void> _createOrUpdateSchedule() async {
+    if (_selectedClassId == null) {
+      _showErrorSnackBar('Please select a class');
+      return;
+    }
+    
+    if (_periods.isEmpty) {
+      _showErrorSnackBar('Please add at least one period');
+      return;
+    }
+    
+    setState(() => _isCreatingSchedule = true);
+    
+    try {
+      if (_isUpdateMode && _scheduleIdToUpdate != null) {
+        await _scheduleService.updateSchedule(
+          scheduleId: _scheduleIdToUpdate!,
+          classId: _selectedClassId!,
+          periods: _periods,
         );
-      },
+        _showSuccessSnackBar('Schedule updated successfully!');
+      } else {
+        await _scheduleService.createSchedule(
+          classId: _selectedClassId!,
+          periods: _periods,
+        );
+        _showSuccessSnackBar('Schedule created successfully!');
+      }
+      
+      setState(() {
+        _selectedClassId = null;
+        _selectedClass = null;
+        _periods.clear();
+        _classTeachers.clear();
+        _classSubjects.clear();
+        _existingScheduleForClass = null;
+        _isUpdateMode = false;
+        _scheduleIdToUpdate = null;
+      });
+      
+      await _loadExistingSchedules();
+      
+    } catch (e) {
+      _showErrorSnackBar('Failed to ${_isUpdateMode ? 'update' : 'create'} schedule: ${e.toString()}');
+    } finally {
+      setState(() => _isCreatingSchedule = false);
+    }
+  }
+
+  String _getTeacherName(String teacherId) {
+    final teacher = _classTeachers.firstWhere(
+      (t) => t['_id'] == teacherId,
+      orElse: () => {'name': 'Unknown Teacher'},
+    );
+    return teacher['name'] ?? 'Unknown Teacher';
+  }
+
+  // Helper method to get teacher name for schedule display
+  String _getTeacherNameForDisplay(dynamic teacherData) {
+    if (teacherData == null) {
+      return 'No Teacher Assigned';
+    }
+    
+    // If teacherId is an object with teacher details
+    if (teacherData is Map<String, dynamic>) {
+      return teacherData['name'] ?? 'Unknown Teacher';
+    }
+    
+    // If teacherId is just a string ID
+    if (teacherData is String) {
+      // If we have loaded teachers for this class, use them
+      if (_classTeachers.isNotEmpty) {
+        final teacher = _classTeachers.firstWhere(
+          (t) => t['_id'] == teacherData,
+          orElse: () => {'name': 'Teacher ID: $teacherData'},
+        );
+        return teacher['name'] ?? 'Unknown Teacher';
+      }
+      
+      // Otherwise, just show the teacher ID
+      return 'Teacher ID: $teacherData';
+    }
+    
+    return 'Unknown Teacher';
+  }
+
+  // Helper method to get teacher ID from teacher data
+  String _getTeacherIdFromData(dynamic teacherData) {
+    if (teacherData == null) {
+      return '';
+    }
+    
+    // If teacherId is an object with teacher details
+    if (teacherData is Map<String, dynamic>) {
+      return teacherData['_id'] ?? '';
+    }
+    
+    // If teacherId is just a string ID
+    if (teacherData is String) {
+      return teacherData;
+    }
+    
+    return '';
+  }
+
+  // Helper method to organize periods by day for better display
+  Map<String, List<Map<String, dynamic>>> _organizePeriodsByDay(List<dynamic> periods) {
+    final Map<String, List<Map<String, dynamic>>> organizedPeriods = {};
+    
+    for (final day in _daysOfWeek) {
+      organizedPeriods[day] = [];
+    }
+    
+    for (final period in periods) {
+      final dayOfWeek = period['dayOfWeek'] as String;
+      if (organizedPeriods.containsKey(dayOfWeek)) {
+        organizedPeriods[dayOfWeek]!.add(period as Map<String, dynamic>);
+      }
+    }
+    
+    // Sort periods by period number for each day
+    for (final day in organizedPeriods.keys) {
+      organizedPeriods[day]!.sort((a, b) => 
+        (a['periodNumber'] as int).compareTo(b['periodNumber'] as int));
+    }
+    
+    return organizedPeriods;
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
-  void _confirmDeletePeriod(String day, String className, int index) {
-    final schedule = _schedules[day]![className]![index];
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Period'),
-        content: Text('Are you sure you want to delete Period ${schedule.period}: ${schedule.subject}?'),
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Schedule Management',
+          style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 2,
+        iconTheme: IconThemeData(color: _primaryColor),
         actions: [
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadInitialData,
           ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-            onPressed: () {
-              _deletePeriod(day, className, index);
-              Navigator.of(context).pop();
-            },
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: _primaryColor,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: _primaryColor,
+          tabs: const [
+            Tab(icon: Icon(Icons.view_list), text: 'View Schedules'),
+            Tab(icon: Icon(Icons.add), text: 'Create/Edit'),
+          ],
+        ),
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: _accentColor))
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildViewSchedulesTab(),
+                _buildCreateEditTab(),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildViewSchedulesTab() {
+    return Column(
+      children: [
+        // Class selection for viewing
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Select Class to View Schedule',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedViewClassId,
+                decoration: InputDecoration(
+                  labelText: 'Select Class',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.school, color: _accentColor),
+                ),
+                items: _availableClasses.map((classItem) {
+                  return DropdownMenuItem<String>(
+                    value: classItem['_id'],
+                    child: Text(
+                      '${classItem['name']} (Grade ${classItem['grade']}${classItem['section']})',
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    _selectClassForView(value);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        
+        // Schedule display
+        Expanded(
+          child: _selectedViewClassId == null
+              ? _buildSelectClassForViewPrompt()
+              : _isLoading
+                  ? Center(child: CircularProgressIndicator(color: _accentColor))
+                  : _viewSchedule == null
+                      ? _buildNoScheduleFound()
+                      : _buildScheduleDisplay(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectClassForViewPrompt() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.schedule, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'Select a Class',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Choose a class from the dropdown above to view its schedule',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600),
           ),
         ],
       ),
     );
   }
-  
-  void _addEditPeriod(BuildContext context, {String? day, PeriodSchedule? existingSchedule, String? className}) {
-    final currentDay = day ?? _days[_tabController.index];
-    final currentClass = className ?? _selectedClass;
-    final isEditing = existingSchedule != null;
+
+  Widget _buildNoScheduleFound() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.schedule_outlined, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'No Schedule Found',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This class doesn\'t have a schedule yet.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              _tabController.animateTo(1);
+              if (_selectedViewClassId != null) {
+                _selectClassForEdit(_selectedViewClassId!);
+              }
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Create Schedule'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduleDisplay() {
+    if (_viewSchedule == null) return Container();
+
+    final periods = _viewSchedule!['periods'] as List<dynamic>? ?? [];
+    final organizedPeriods = _organizePeriodsByDay(periods);
+    final classInfo = _viewSchedule!['classId'] as Map<String, dynamic>? ?? {};
     
-    final periodController = TextEditingController(text: isEditing ? existingSchedule.period.toString() : '');
-    final startTimeController = TextEditingController(text: isEditing ? existingSchedule.startTime : '');
-    final endTimeController = TextEditingController(text: isEditing ? existingSchedule.endTime : '');
-    final subjectController = TextEditingController(text: isEditing ? existingSchedule.subject : '');
-    final teacherController = TextEditingController(text: isEditing ? existingSchedule.teacher : '');
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? 'Edit Period' : 'Add Period'),
-        titleTextStyle: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, fontSize: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: SingleChildScrollView(
+    return Column(
+      children: [
+        // Schedule header
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _primaryColor.withOpacity(0.1),
+            border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: periodController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Period Number',
-                  prefixIcon: const Icon(Icons.access_time),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              Row(
+                children: [
+                  Icon(Icons.schedule, color: _primaryColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${classInfo['name'] ?? 'Unknown Class'}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: _primaryColor,
+                          ),
+                        ),
+                        Text(
+                          'Grade ${classInfo['grade'] ?? 'N/A'}${classInfo['section'] ?? ''} - ${classInfo['year'] ?? 'N/A'}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: _primaryColor.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _editSchedule,
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Edit'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: startTimeController,
-                decoration: InputDecoration(
-                  labelText: 'Start Time',
-                  prefixIcon: const Icon(Icons.timer),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onTap: () async {
-                  FocusScope.of(context).requestFocus(FocusNode());
-                  final time = await showTimePicker(
-                    context: context, 
-                    initialTime: TimeOfDay.now(),
-                  );
-                  if (time != null) {
-                    startTimeController.text = _formatTimeOfDay(time);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: endTimeController,
-                decoration: InputDecoration(
-                  labelText: 'End Time',
-                  prefixIcon: const Icon(Icons.timer_off),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onTap: () async {
-                  FocusScope.of(context).requestFocus(FocusNode());
-                  final time = await showTimePicker(
-                    context: context, 
-                    initialTime: TimeOfDay.now(),
-                  );
-                  if (time != null) {
-                    endTimeController.text = _formatTimeOfDay(time);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: subjectController,
-                decoration: InputDecoration(
-                  labelText: 'Subject',
-                  prefixIcon: const Icon(Icons.book),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: teacherController,
-                decoration: InputDecoration(
-                  labelText: 'Teacher',
-                  prefixIcon: const Icon(Icons.person),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
+              const SizedBox(height: 8),
               Container(
-                margin: const EdgeInsets.only(top: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _cardColor,
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.class_),
-                    const SizedBox(width: 8),
+                    Icon(Icons.info_outline, color: _primaryColor, size: 16),
+                    const SizedBox(width: 4),
                     Text(
-                      'Class: $currentClass', 
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      '${periods.length} periods across ${organizedPeriods.keys.where((day) => organizedPeriods[day]!.isNotEmpty).length} days',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _primaryColor,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -501,140 +939,871 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> wit
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(),
+        
+        // Schedule display - organized by days
+        Expanded(
+          child: periods.isEmpty
+              ? const Center(child: Text('No periods in this schedule'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _daysOfWeek.length,
+                  itemBuilder: (context, dayIndex) {
+                    final day = _daysOfWeek[dayIndex];
+                    final dayPeriods = organizedPeriods[day] ?? [];
+                    
+                    if (dayPeriods.isEmpty) {
+                      return Container(); // Skip days with no periods
+                    }
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      elevation: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Day header
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  _accentColor.withOpacity(0.2),
+                                  _accentColor.withOpacity(0.1),
+                                ],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                              ),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(8),
+                                topRight: Radius.circular(8),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: _accentColor,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.calendar_today, 
+                                    color: Colors.white, 
+                                    size: 16,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    day,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: _accentColor,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: _accentColor,
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  child: Text(
+                                    '${dayPeriods.length} period${dayPeriods.length > 1 ? 's' : ''}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          
+                          // Periods for this day
+                          ...dayPeriods.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final period = entry.value;
+                            final isLast = index == dayPeriods.length - 1;
+                            
+                            return Container(
+                              margin: EdgeInsets.only(
+                                bottom: isLast ? 0 : 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: !isLast ? Border(
+                                  bottom: BorderSide(
+                                    color: Colors.grey.shade100,
+                                    width: 1,
+                                  ),
+                                ) : null,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    // Period number with enhanced styling
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            _primaryColor,
+                                            _primaryColor.withOpacity(0.8),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: _primaryColor.withOpacity(0.3),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          period['periodNumber'].toString(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    
+                                    // Subject and time info
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            period['subject'] ?? 'Unknown Subject',
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.access_time,
+                                                size: 14,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '${period['startTime']} - ${period['endTime']}',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.grey.shade600,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          // Teacher info with better styling
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: period['teacherId'] == null || 
+                                                     period['teacherId'] == ''
+                                                  ? Colors.red.shade50
+                                                  : Colors.blue.shade50,
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: period['teacherId'] == null || 
+                                                       period['teacherId'] == ''
+                                                    ? Colors.red.shade200
+                                                    : Colors.blue.shade200,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  period['teacherId'] == null || 
+                                                  period['teacherId'] == ''
+                                                      ? Icons.person_off
+                                                      : Icons.person,
+                                                  size: 12,
+                                                  color: period['teacherId'] == null || 
+                                                         period['teacherId'] == ''
+                                                      ? Colors.red.shade600
+                                                      : Colors.blue.shade600,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  _getTeacherNameForDisplay(period['teacherId']),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: period['teacherId'] == null || 
+                                                           period['teacherId'] == ''
+                                                        ? Colors.red.shade700
+                                                        : Colors.blue.shade700,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreateEditTab() {
+    return Column(
+      children: [
+        // Class selection header for create/edit
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white, Colors.grey.shade50],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.shade200,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _accentColor),
-            child: Text(isEditing ? 'Update' : 'Add'),
-            onPressed: () {
-              // Validate inputs
-              if (periodController.text.isEmpty ||
-                  startTimeController.text.isEmpty ||
-                  endTimeController.text.isEmpty ||
-                  subjectController.text.isEmpty ||
-                  teacherController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please fill all fields'))
-                );
-                return;
-              }
-              
-              final newSchedule = PeriodSchedule(
-                period: int.parse(periodController.text),
-                startTime: startTimeController.text,
-                endTime: endTimeController.text,
-                subject: subjectController.text,
-                teacher: teacherController.text,
-                classGroup: currentClass,
-              );
-              
-              setState(() {
-                if (isEditing) {
-                  final index = _schedules[currentDay]![currentClass]!.indexOf(existingSchedule);
-                  _schedules[currentDay]![currentClass]![index] = newSchedule;
-                } else {
-                  _schedules[currentDay]![currentClass]!.add(newSchedule);
-                  // Sort by period
-                  _schedules[currentDay]![currentClass]!.sort((a, b) => a.period.compareTo(b.period));
-                }
-              });
-              
-              Navigator.of(context).pop();
-              
-              // Show success message
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(isEditing ? 'Period updated successfully!' : 'Period added successfully!'),
-                  backgroundColor: _accentColor,
-                )
-              );
-            },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Step 1: Select Class',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedClassId,
+                decoration: InputDecoration(
+                  labelText: 'Select Class',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.school, color: _accentColor),
+                ),
+                items: _availableClasses.map((classItem) {
+                  return DropdownMenuItem<String>(
+                    value: classItem['_id'],
+                    child: Text(
+                      '${classItem['name']} (Grade ${classItem['grade']}${classItem['section']})',
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    _selectClassForEdit(value);
+                  }
+                },
+              ),
+              if (_selectedClass != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info, color: _primaryColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Selected: ${_selectedClass!['name']} | '
+                          'Teachers: ${_classTeachers.length} | '
+                          'Subjects: ${_classSubjects.length}',
+                          style: TextStyle(color: _primaryColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_existingScheduleForClass != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Update Mode: This class already has a schedule with ${_periods.length} periods',
+                            style: const TextStyle(
+                              color: Colors.orange,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+        
+        // Schedule building section
+        Expanded(
+          child: _selectedClassId == null
+              ? _buildSelectClassPrompt()
+              : _classTeachers.isEmpty || _classSubjects.isEmpty
+                  ? _buildMissingDataPrompt()
+                  : _buildScheduleBuilder(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectClassPrompt() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.school, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'Select a Class to Begin',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Choose a class from the dropdown above to start creating a schedule',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600),
           ),
         ],
       ),
-      );
-  }
-
-  void _deletePeriod(String day, String className, int index) {
-    setState(() {
-      _schedules[day]![className]!.removeAt(index);
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Period deleted successfully!'),
-        backgroundColor: Colors.redAccent,
-      )
     );
   }
-  
-  String _formatTimeOfDay(TimeOfDay time) {
-    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-    final minute = time.minute < 10 ? '0${time.minute}' : time.minute;
-    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$hour:$minute $period';
-  }
-  
-  void _shareSchedule() {
-    final currentDay = _days[_tabController.index];
-    final classSchedule = _schedules[currentDay]?[_selectedClass] ?? [];
-    
-    if (classSchedule.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No schedule to share'))
-      );
-      return;
-    }
-    
-    String scheduleText = 'Schedule for Class $_selectedClass on $currentDay:\n\n';
-    for (var schedule in classSchedule) {
-      scheduleText += 'Period ${schedule.period} (${schedule.startTime} - ${schedule.endTime}):\n'
-          '- Subject: ${schedule.subject}\n'
-          '- Teacher: ${schedule.teacher}\n\n';
-    }
-    
-    Share.share(scheduleText, subject: '$currentDay Schedule for Class $_selectedClass');
-  }
 
-  void _saveSchedule() {
-    // In a real app, this would save to a database or cloud service
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Schedule saved successfully!'),
-          ],
-        ),
-        backgroundColor: _accentColor,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      )
+  Widget _buildMissingDataPrompt() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.warning, size: 80, color: Colors.orange.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'Class Setup Incomplete',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _classTeachers.isEmpty && _classSubjects.isEmpty
+                ? 'This class needs both teachers and subjects assigned'
+                : _classTeachers.isEmpty
+                    ? 'This class needs teachers assigned'
+                    : 'This class needs subjects assigned',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.people, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Teachers: ${_classTeachers.length}',
+                      style: TextStyle(
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.book, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Subjects: ${_classSubjects.length}',
+                      style: TextStyle(
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            icon: const Icon(Icons.settings),
+            label: const Text('Go to Class Management'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
 
-class PeriodSchedule {
-  final int period;
-  final String startTime;
-  final String endTime;
-  final String subject;
-  final String teacher;
-  final String classGroup;
-  
-  PeriodSchedule({
-    required this.period,
-    required this.startTime,
-    required this.endTime,
-    required this.subject,
-    required this.teacher,
-    required this.classGroup,
-  });
+  Widget _buildScheduleBuilder() {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: Colors.grey.shade50,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _isUpdateMode ? 'Step 2: Update Schedule' : 'Step 2: Build Schedule',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _isUpdateMode 
+                    ? 'Modify existing periods or add new ones'
+                    : 'Add periods by selecting day, period number, subject, and teacher',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+              if (_periods.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Current periods: ${_periods.length}',
+                  style: TextStyle(
+                    color: _primaryColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        
+        Expanded(
+          child: _periods.isEmpty
+              ? _buildEmptyPeriodsView()
+              : _buildPeriodsListView(),
+        ),
+        
+        if (_periods.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            child: ElevatedButton.icon(
+              onPressed: _isCreatingSchedule ? null : _createOrUpdateSchedule,
+              icon: _isCreatingSchedule
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Icon(_isUpdateMode ? Icons.update : Icons.save),
+              label: Text(_isCreatingSchedule 
+                  ? (_isUpdateMode ? 'Updating...' : 'Creating...') 
+                  : (_isUpdateMode ? 'Update Schedule' : 'Create Schedule')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isUpdateMode ? Colors.orange : _primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                textStyle: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyPeriodsView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.access_time, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            _isUpdateMode ? 'No Periods in Schedule' : 'No Periods Added',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _isUpdateMode 
+                ? 'This schedule doesn\'t have any periods yet. Add some periods to complete the schedule.'
+                : 'Tap the + button to add your first period',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _addPeriod,
+            icon: const Icon(Icons.add),
+            label: Text(_isUpdateMode ? 'Add First Period' : 'Add First Period'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accentColor,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodsListView() {
+    final organizedPeriods = _organizePeriodsByDay(_periods);
+    
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _daysOfWeek.length,
+      itemBuilder: (context, dayIndex) {
+        final day = _daysOfWeek[dayIndex];
+        final dayPeriods = organizedPeriods[day] ?? [];
+        
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          elevation: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Day header with Add Period button
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: dayPeriods.isEmpty 
+                        ? [Colors.grey.shade100, Colors.grey.shade50]
+                        : [_accentColor.withOpacity(0.2), _accentColor.withOpacity(0.1)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: dayPeriods.isEmpty 
+                            ? Colors.grey.shade400 
+                            : _accentColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.calendar_today, 
+                        color: Colors.white, 
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        day,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: dayPeriods.isEmpty 
+                              ? Colors.grey.shade600 
+                              : _accentColor,
+                        ),
+                      ),
+                    ),
+                    if (dayPeriods.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: _accentColor,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Text(
+                          '${dayPeriods.length} period${dayPeriods.length > 1 ? 's' : ''}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    // Add Period button for each day
+                    Container(
+                      decoration: BoxDecoration(
+                        color: _primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: _primaryColor.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.add, 
+                          color: _primaryColor, 
+                          size: 18,
+                        ),
+                        onPressed: () => _showAddPeriodDialog(preSelectedDay: day),
+                        padding: const EdgeInsets.all(6),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        tooltip: 'Add Period to $day',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Periods for this day or empty state
+              if (dayPeriods.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.schedule_outlined,
+                        size: 32,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No periods scheduled',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontStyle: FontStyle.italic,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () => _showAddPeriodDialog(preSelectedDay: day),
+                        icon: Icon(Icons.add, size: 16, color: _primaryColor),
+                        label: Text(
+                          'Add Period',
+                          style: TextStyle(color: _primaryColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ...dayPeriods.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final period = entry.value;
+                  final globalIndex = _periods.indexOf(period);
+                  final isLast = index == dayPeriods.length - 1;
+                  
+                  return Container(
+                    margin: EdgeInsets.only(bottom: isLast ? 0 : 1),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: !isLast ? Border(
+                        bottom: BorderSide(
+                          color: Colors.grey.shade100,
+                          width: 1,
+                        ),
+                      ) : null,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          // Period number
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  _primaryColor,
+                                  _primaryColor.withOpacity(0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _primaryColor.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Text(
+                                period['periodNumber'].toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          
+                          // Subject and details
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  period['subject'],
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${period['startTime']} - ${period['endTime']}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Teacher: ${_getTeacherName(period['teacherId'])}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          
+                          // Action buttons
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Edit button
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(
+                                    Icons.edit, 
+                                    color: Colors.orange.shade600, 
+                                    size: 18,
+                                  ),
+                                  onPressed: () => _editPeriod(globalIndex),
+                                  padding: const EdgeInsets.all(6),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  tooltip: 'Edit Period',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Delete button
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(
+                                    Icons.delete_outline, 
+                                    color: Colors.red.shade600, 
+                                    size: 18,
+                                  ),
+                                  onPressed: () => _removePeriod(globalIndex),
+                                  padding: const EdgeInsets.all(6),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  tooltip: 'Delete Period',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

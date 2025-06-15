@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../models/school_model.dart';
-import '../services/api_service.dart';
-import '../screens/login_screen.dart';
 import '../utils/app_theme.dart';
-import '../utils/storage_util.dart'; // Import storage util
+import '../utils/storage_util.dart'; 
 import 'school_admin/class_management_screen.dart';
 import 'school_admin/teacher_management_screen.dart';
 import 'school_admin/student_management_screen.dart';
@@ -13,27 +11,25 @@ import 'school_admin/event_management_screen.dart';
 // import 'school_admin/fee_collection_screen.dart';
 import 'school_admin/schedule_management_screen.dart';
 import 'school_admin/notifiaction_management_screen.dart';
-import 'school_admin/analytic_dashboard.dart';
+// import 'school_admin/analytic_dashboard.dart';
+import 'school_admin/profile.dart'; // Add this import
 import 'school_selection_screen.dart';
 
 class SchoolAdminDashboard extends StatefulWidget {
   final User user;
 
-  const SchoolAdminDashboard({Key? key, required this.user}) : super(key: key);
+  const SchoolAdminDashboard({super.key, required this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _SchoolAdminDashboardState createState() => _SchoolAdminDashboardState();
 }
 
 class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
-  late ApiService _apiService;
   bool _isLoading = true;
   School? _school;
-  List<Map<String, dynamic>> _stats = [];
   int _currentIndex = 0;
   String _schoolName = "";
-  String _schoolId = "";
-  String _schoolToken = "";
 
   // Theme colors from app_theme.dart
   late Color _primaryColor;
@@ -44,7 +40,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
   @override
   void initState() {
     super.initState();
-    _apiService = ApiService(baseUrl: 'https://api.schoolmanagement.com');
     _loadThemeColors();
     _loadSchoolInfo(); // Added method to load school info
     _loadDashboardData();
@@ -54,27 +49,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
   Future<void> _loadSchoolInfo() async {
     try {
       // Get stored school information
-      final schoolName = await StorageUtil.getString('schoolName') ?? 'Unknown School';
-      final schoolId = await StorageUtil.getString('schoolId') ?? 'Unknown ID';
-      final schoolToken = await StorageUtil.getString('schoolToken') ?? 'Unknown Token';
-      
+      final schoolName =
+          await StorageUtil.getString('schoolName') ?? 'Unknown School';
+
       setState(() {
         _schoolName = schoolName;
-        _schoolId = schoolId;
-        _schoolToken = schoolToken;
       });
-      
-      // Log the admin login information to console
-      print('🔐 ==========================================');
-      print('🔐 ADMIN LOGIN INFORMATION:');
-      print('🔐 You are logged in as School Admin of:');
-      print('🔐 School Name: $_schoolName');
-      print('🔐 School ID: $_schoolId');
-      print('🔐 Access Token: $_schoolToken');
-      print('🔐 User: ${widget.user.profile.firstName} ${widget.user.profile.lastName}');
-      print('🔐 User Email: ${widget.user.email}');
-      print('🔐 ==========================================');
-      
       // Also dump all storage for debugging
       await StorageUtil.debugDumpAll();
     } catch (e) {
@@ -95,10 +75,9 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
     });
 
     try {
-      final schools = await _apiService.getSchools();
-      if (schools.isNotEmpty) {
-        _school = School.fromJson(schools[0]);
-      }
+        
+      // For now, just simulate loading without API call
+      await Future.delayed(const Duration(milliseconds: 500));
     } catch (e) {
       // ignore: avoid_print
       print('Error loading dashboard data: $e');
@@ -125,11 +104,10 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
               SizedBox(width: isSmallScreen ? 8 : 12),
               Expanded(
                 child: Text(
-                  'School Admin', 
+                  'School Admin',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: isSmallScreen ? 18 : 20
-                  ),
+                      fontWeight: FontWeight.bold,
+                      fontSize: isSmallScreen ? 18 : 20),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -206,19 +184,17 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                     Text(
                       '${widget.user.profile.firstName} ${widget.user.profile.lastName}',
                       style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.white
-                      ),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _schoolName,  // Display school name here
+                      _schoolName, // Display school name here
                       style: const TextStyle(
-                        fontWeight: FontWeight.w400,
-                        fontSize: 14,
-                        color: Colors.white70
-                      ),
+                          fontWeight: FontWeight.w400,
+                          fontSize: 14,
+                          color: Colors.white70),
                     ),
                   ],
                 ),
@@ -247,14 +223,14 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                   _navigateToScheduleManagement),
               _buildDrawerTile(Icons.calendar_today, 'Academic Calendar',
                   _navigateToAcademicCalendar),
-              _buildDrawerTile(Icons.analytics, 'Analytics Dashboard',
-                  _navigateToAnalyticsDashboard),
+              // _buildDrawerTile(Icons.analytics, 'Analytics Dashboard',
+              //     _navigateToAnalyticsDashboard),
               const Divider(),
               _buildCategoryHeader('PEOPLE'),
               _buildDrawerTile(Icons.people, 'Students', _navigateToStudents),
               _buildDrawerTile(Icons.person, 'Teachers', _navigateToTeachers),
-              _buildDrawerTile(
-                  Icons.family_restroom, 'Parents', _navigateToParents),
+              // _buildDrawerTile(
+              //     Icons.family_restroom, 'Parents', _navigateToParents),
               const Divider(),
               // _buildCategoryHeader('FINANCE'),
               // _buildDrawerTile(
@@ -262,7 +238,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
               // const Divider(),
               _buildCategoryHeader('COMMUNICATION'),
               _buildDrawerTile(
-                  Icons.message, 'Messaging', _navigateToMessaging),
+                  Icons.message, 'Calendar', _navigateToAcademicCalendar),
               _buildDrawerTile(Icons.announcement, 'Notifications',
                   _navigateToNotifications),
               _buildDrawerTile(Icons.event, 'Events', _navigateToEvents),
@@ -285,10 +261,10 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                         TextButton(
                           onPressed: () async {
                             Navigator.of(context).pop();
-                            
+
                             // Clear all user-related stored data
                             await _performLogout();
-                            
+
                             // Navigate to school selection screen after logout
                             Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(
@@ -297,7 +273,8 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                               (route) => false,
                             );
                           },
-                          child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                          child: const Text('Logout',
+                              style: TextStyle(color: Colors.red)),
                         ),
                       ],
                     );
@@ -317,29 +294,22 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildSchoolHeader(), 
+                      _buildSchoolHeader(),
                       if (_school != null) _buildSchoolInfoCard(),
-                      const SizedBox(height: 16),
-                      _buildStatsGrid(),
                       SizedBox(height: isSmallScreen ? 16 : 24),
                       _buildSectionHeader('Administrative Tools'),
                       const SizedBox(height: 16),
                       _buildAdminToolsGrid(),
                       SizedBox(height: isSmallScreen ? 16 : 24),
-                      _buildSectionHeader('Recent Activities'),
-                      const SizedBox(height: 16),
-                      _buildActivitiesCard(),
-                      const SizedBox(
-                          height:
-                              24), // Add bottom padding for better scrolling
+                      const SizedBox(height: 24), // Add bottom padding for better scrolling
                     ],
                   ),
                 ),
               ),
         floatingActionButton: FloatingActionButton(
           backgroundColor: _accentColor,
-          child: const Icon(Icons.add),
           onPressed: _showQuickActions,
+          child: const Icon(Icons.add),
         ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
@@ -355,8 +325,8 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
             BottomNavigationBarItem(icon: Icon(Icons.class_), label: 'Classes'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.message), label: 'Messages'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.analytics), label: 'Analytics'),
+            // BottomNavigationBarItem(
+            //     icon: Icon(Icons.analytics), label: 'Analytics'),
           ],
           onTap: _handleBottomNavTap,
         ),
@@ -367,7 +337,126 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
   // New widget to display school information at the top of the dashboard
   Widget _buildSchoolHeader() {
     return Card(
+      elevation: 6,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        padding: const EdgeInsets.all(20.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            colors: _gradientColors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _primaryColor.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.school,
+                    color: _primaryColor,
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Welcome to',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _schoolName.isNotEmpty ? _schoolName : 'Loading...',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.admin_panel_settings,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+            
     
+      
+
+
+  Widget _buildQuickStat(String label, String value, IconData icon) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -389,91 +478,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
       onTap: () {
         Navigator.pop(context);
         onTap();
-      },
-    );
-  }
-
-  Widget _buildStatsGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 1.64,
-      ),
-      itemCount: _stats.length,
-      itemBuilder: (context, index) {
-        final stat = _stats[index];
-        final Color statColor = stat['color'] as Color;
-
-        return Card(
-          elevation: 4,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () {
-              switch (stat['title']) {
-                case 'Students':
-                  _navigateToStudents();
-                  break;
-                case 'Teachers':
-                  _navigateToTeachers();
-                  break;
-                case 'Classes':
-                  _navigateToClassManagement();
-                  break;
-              }
-            },
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -10,
-                  bottom: -10,
-                  child: Icon(stat['icon'] as IconData,
-                      size: 70, color: statColor.withOpacity(0.15)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(12.0), // Reduced from 14.0
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Icon(stat['icon'] as IconData,
-                          size: 24, color: statColor), // Reduced from 26
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '${stat['count']}${stat['suffix'] ?? ''}',
-                              style: TextStyle(
-                                  fontSize: 19,
-                                  fontWeight: FontWeight.bold,
-                                  color: statColor), // Reduced from 20
-                            ),
-                          ),
-                          const SizedBox(height: 2), // Reduced from 3
-                          Text(
-                            stat['title'] as String,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500), // Reduced from 13
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
       },
     );
   }
@@ -629,70 +633,6 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
     );
   }
 
-  Widget _buildActivitiesCard() {
-    final activities = [
-      {
-        'title': 'New student enrolled',
-        'description': 'John Doe added to Class 10A',
-        'time': '2h ago',
-        'icon': Icons.person_add,
-        'color': _accentColor,
-      },
-      {
-        'title': 'New timetable created',
-        'description': 'Class 9B schedule updated',
-        'time': '5h ago',
-        'icon': Icons.schedule,
-        'color': Colors.orange,
-      },
-      {
-        'title': 'Notification sent',
-        'description': 'School closure notice sent to all',
-        'time': '6h ago',
-        'icon': Icons.notifications,
-        'color': _tertiaryColor,
-      },
-    ];
-
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: activities.length,
-        separatorBuilder: (context, index) => const Divider(height: 0),
-        itemBuilder: (context, index) {
-          final activity = activities[index];
-          return ListTile(
-            dense: true,
-            leading: CircleAvatar(
-              radius: 18,
-              backgroundColor: (activity['color'] as Color).withOpacity(0.2),
-              child: Icon(activity['icon'] as IconData,
-                  color: activity['color'] as Color, size: 18),
-            ),
-            title: Text(
-              activity['title'] as String,
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              activity['description'] as String,
-              style: const TextStyle(fontSize: 12),
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: Text(
-              activity['time'] as String,
-              style: const TextStyle(color: Colors.black54, fontSize: 11),
-            ),
-            onTap: () {},
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildSchoolInfoCard() {
     return Card(
       elevation: 4,
@@ -725,7 +665,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _schoolName, 
+                    _schoolName,
                     style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -856,9 +796,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
       case 3:
         _navigateToMessaging();
         break;
-      case 4:
-        _navigateToAnalyticsDashboard();
-        break;
+     
     }
   }
 
@@ -891,12 +829,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
             title: 'Students',
             onTap: _navigateToStudents,
           ),
-          _buildQuickActionTile(
-            icon: Icons.family_restroom,
-            color: Colors.amber,
-            title: 'Parents',
-            onTap: _navigateToParents,
-          ),
+          // _buildQuickActionTile(
+          //   icon: Icons.family_restroom,
+          //   color: Colors.amber,
+          //   title: 'Parents',
+          //   onTap: _navigateToParents,
+          // ),
         ],
       ),
     );
@@ -912,7 +850,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
   }
 
   void _navigateToProfile() {
-    _launchFeature('Profile', 'View and edit admin profile');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SchoolAdminProfileScreen(),
+      ),
+    );
   }
 
   void _navigateToClassManagement() {
@@ -952,12 +895,12 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
     );
   }
 
-  void _navigateToAnalyticsDashboard() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AnalyticsDashboard()),
-    );
-  }
+  // void _navigateToAnalyticsDashboard() {
+  //   Navigator.push(
+  //     context,
+  //     MaterialPageRoute(builder: (context) => const AnalyticsDashboard()),
+  //   );
+  // }
 
   // void _navigateToFeeManagement() {
   //   Navigator.push(
@@ -985,10 +928,10 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
     });
   }
 
-  void _navigateToParents() {
-    _launchFeature(
-        'Parent Management', 'Manage parent information and communication');
-  }
+  // void _navigateToParents() {
+  //   _launchFeature(
+  //       'Parent Management', 'Manage parent information and communication');
+  // }
 
   void _navigateToMessaging() {
     _launchFeature(
@@ -1070,11 +1013,11 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
   Future<void> _performLogout() async {
     try {
       print('🔐 Performing logout and clearing user data...');
-      
+
       // Clear user auth credentials
       await StorageUtil.setString('accessToken', '');
       await StorageUtil.setString('refreshToken', '');
-      
+
       // Clear user profile information
       await StorageUtil.setString('userId', '');
       await StorageUtil.setString('userEmail', '');
@@ -1084,22 +1027,21 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
       await StorageUtil.setString('userPhone', '');
       await StorageUtil.setString('userAddress', '');
       await StorageUtil.setString('userProfilePic', '');
-      
+
       // Clear school-related information
       await StorageUtil.setString('schoolToken', '');
       await StorageUtil.setString('schoolName', '');
       await StorageUtil.setString('schoolId', '');
       await StorageUtil.setString('schoolAddress', '');
       await StorageUtil.setString('schoolPhone', '');
-      
+
       // Set login status to false
       await StorageUtil.setBool('isLoggedIn', false);
-      
+
       print('🔐 Logout completed. All user data cleared.');
-      
+
       // Optional: Dump storage to verify everything was cleared
       await StorageUtil.debugDumpAll();
-      
     } catch (e) {
       print('⚠️ Error during logout: $e');
     }

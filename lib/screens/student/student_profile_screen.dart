@@ -1,21 +1,69 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
+import '../../services/student_service.dart';
 
-class StudentProfileScreen extends StatelessWidget {
+class StudentProfileScreen extends StatefulWidget {
   final User user;
+  final String? studentId;
 
-  const StudentProfileScreen({super.key, required this.user});
+  const StudentProfileScreen({
+    super.key, 
+    required this.user,
+    this.studentId,
+  });
+
+  @override
+  State<StudentProfileScreen> createState() => _StudentProfileScreenState();
+}
+
+class _StudentProfileScreenState extends State<StudentProfileScreen> {
+  late StudentService _studentService;
+  Map<String, dynamic>? _studentData;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _studentService = StudentService(baseUrl: 'http://localhost:3000');
+    _fetchStudentData();
+  }
+
+  Future<void> _fetchStudentData() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Use provided studentId or extract from user
+      final String studentIdToFetch = widget.studentId ?? widget.user.id;
+      
+      final studentData = await _studentService.getStudentById(studentIdToFetch);
+      
+      setState(() {
+        _studentData = studentData;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    Theme.of(context);
-    AppTheme.getAccentColor(AppTheme.defaultTheme);
-    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Student Profile'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchStudentData,
+          ),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () {
@@ -26,19 +74,76 @@ class StudentProfileScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildProfileHeader(context, user),
-            const SizedBox(height: 20),
-            _buildInfoSection(context),
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading student data',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _fetchStudentData,
+              child: const Text('Retry'),
+            ),
           ],
         ),
+      );
+    }
+
+    if (_studentData == null) {
+      return const Center(
+        child: Text('No student data available'),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          _buildProfileHeader(context, _studentData!),
+          const SizedBox(height: 20),
+          _buildInfoSection(context, _studentData!),
+        ],
       ),
     );
   }
 
-  Widget _buildProfileHeader(BuildContext context, User user) {
+  Widget _buildProfileHeader(BuildContext context, Map<String, dynamic> studentData) {
+    final classData = studentData['classId'] as Map<String, dynamic>?;
+    final studentName = studentData['name'] ?? 'Unknown Student';
+    final studentId = studentData['studentId'] ?? 'N/A';
+    final gradeSection = classData != null 
+        ? 'Grade ${classData['grade']}-${classData['section']}'
+        : 'No Class Assigned';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -56,12 +161,12 @@ class StudentProfileScreen extends StatelessWidget {
             child: CircleAvatar(
               radius: 50,
               backgroundColor: Colors.white,
-              backgroundImage: NetworkImage(user.profile.profilePicture),
+              backgroundImage: NetworkImage(widget.user.profile.profilePicture),
             ),
           ),
           const SizedBox(height: 15),
           Text(
-            '${user.profile.firstName} ${user.profile.lastName}',
+            studentName,
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -75,9 +180,9 @@ class StudentProfileScreen extends StatelessWidget {
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Text(
-              'Grade 10-A',
-              style: TextStyle(
+            child: Text(
+              gradeSection,
+              style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w500,
               ),
@@ -85,7 +190,7 @@ class StudentProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'ID: STU20240001',
+            'ID: $studentId',
             style: TextStyle(
               color: Colors.white.withOpacity(0.8),
               fontSize: 16,
@@ -96,8 +201,9 @@ class StudentProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoSection(BuildContext context) {
-    Theme.of(context);
+  Widget _buildInfoSection(BuildContext context, Map<String, dynamic> studentData) {
+    final classData = studentData['classId'] as Map<String, dynamic>?;
+    final academicReport = studentData['academicReport'] as Map<String, dynamic>?;
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -106,54 +212,57 @@ class StudentProfileScreen extends StatelessWidget {
         children: [
           _buildSectionTitle('Personal Details'),
           _buildInfoCard([
-            _buildInfoRow('Date of Birth', '15 June 2008'),
-            _buildInfoRow('Age', '16 years'),
-            _buildInfoRow('Gender', 'Male'),
-            _buildInfoRow('Blood Group', 'O+'),
-            _buildInfoRow('Address', '123 Student Lane, Education City'),
+            _buildInfoRow('Student ID', studentData['studentId'] ?? 'N/A'),
+            _buildInfoRow('Name', studentData['name'] ?? 'N/A'),
+            _buildInfoRow('Email', studentData['email'] ?? 'N/A'),
+            _buildInfoRow('Gender', studentData['gender'] ?? 'Not specified'),
+            _buildInfoRow('Fee Status', studentData['feePaid'] == true ? 'Paid' : 'Pending'),
           ]),
           
           const SizedBox(height: 20),
           _buildSectionTitle('Academic Information'),
           _buildInfoCard([
-            _buildInfoRow('Class', '10th Grade'),
-            _buildInfoRow('Section', 'A'),
-            _buildInfoRow('Roll Number', '042'),
-            _buildInfoRow('Admission Date', '5 April 2021'),
-            _buildInfoRow('Academic Year', '2023-2024'),
+            _buildInfoRow('Class', classData?['name'] ?? 'Not assigned'),
+            _buildInfoRow('Grade', classData?['grade']?.toString() ?? 'N/A'),
+            _buildInfoRow('Section', classData?['section'] ?? 'N/A'),
+            _buildInfoRow('Academic Year', classData?['year']?.toString() ?? 'N/A'),
+            _buildInfoRow('Attendance', '${academicReport?['attendancePct'] ?? 0}%'),
           ]),
           
-          const SizedBox(height: 20),
-          _buildSectionTitle('Parent/Guardian Details'),
-          _buildInfoCard([
-            _buildInfoRow('Father\'s Name', 'Robert Smith'),
-            _buildInfoRow('Father\'s Occupation', 'Software Engineer'),
-            _buildInfoRow('Father\'s Contact', '+1 555-123-4567'),
-            _buildInfoRow('Mother\'s Name', 'Emily Smith'),
-            _buildInfoRow('Mother\'s Occupation', 'Doctor'),
-            _buildInfoRow('Mother\'s Contact', '+1 555-765-4321'),
-          ]),
+          if (academicReport?['grades'] != null && (academicReport!['grades'] as List).isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _buildSectionTitle('Academic Performance'),
+            _buildInfoCard([
+              for (var grade in academicReport['grades'] as List)
+                _buildInfoRow(
+                  grade['subject'] ?? 'Subject', 
+                  '${grade['score'] ?? 'N/A'} (${grade['grade'] ?? 'N/A'})'
+                ),
+            ]),
+          ],
           
           const SizedBox(height: 20),
-          _buildSectionTitle('Contact Information'),
+          _buildSectionTitle('System Information'),
           _buildInfoCard([
-            _buildInfoRow('Email', user.email),
-            _buildInfoRow('Phone', '+1 555-987-6543'),
-            _buildInfoRow('Emergency Contact', '+1 555-123-4567'),
-          ]),
-          
-          const SizedBox(height: 20),
-          _buildSectionTitle('Health Information'),
-          _buildInfoCard([
-            _buildInfoRow('Medical Conditions', 'None'),
-            _buildInfoRow('Allergies', 'Peanuts'),
-            _buildInfoRow('Medications', 'None'),
+            _buildInfoRow('Created', _formatDate(studentData['createdAt'])),
+            _buildInfoRow('Last Updated', _formatDate(studentData['updatedAt'])),
+            _buildInfoRow('School ID', studentData['schoolId'] ?? 'N/A'),
           ]),
           
           const SizedBox(height: 30),
         ],
       ),
     );
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null) return 'N/A';
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day}/${date.month}/${date.year}';
+    } catch (e) {
+      return dateString;
+    }
   }
 
   Widget _buildSectionTitle(String title) {

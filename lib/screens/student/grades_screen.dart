@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
+import '../../services/grading_service.dart';
+import '../../services/student_service.dart';
 import 'package:intl/intl.dart';
 
 class GradesScreen extends StatefulWidget {
@@ -15,29 +17,44 @@ class GradesScreen extends StatefulWidget {
 class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = true;
+  String? _error;
   List<Map<String, dynamic>> _grades = [];
   Map<String, List<Map<String, dynamic>>> _progressData = {};
+  late GradingService _gradingService;
+  late StudentService _studentService;
+  String? _studentId; // Store the actual student ID from API
   
-  // Theme colors - matching ScheduleScreen
+  // Theme colors
   late Color _accentColor;
   late List<Color> _gradientColors;
+
+  // Subject colors mapping
+  final Map<String, Color> _subjectColors = {
+    'Mathematics': Colors.blue,
+    'Math': Colors.blue,
+    'Science': Colors.green,
+    'Physics': Colors.indigo,
+    'Chemistry': Colors.teal,
+    'Biology': Colors.lightGreen,
+    'English Literature': Colors.purple,
+    'English': Colors.purple,
+    'History': Colors.orange,
+    'Computer Science': Colors.cyan,
+    'Programming': Colors.cyan,
+    'Art': Colors.pink,
+    'Geography': Colors.brown,
+    'Economics': Colors.deepOrange,
+    'default': Colors.grey,
+  };
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _gradingService = GradingService(baseUrl: 'http://localhost:3000');
+    _studentService = StudentService(baseUrl: 'http://localhost:3000');
     _loadThemeColors();
-    
-    // Simulate loading data
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _loadGradeData();
-          _loadProgressData();
-        });
-      }
-    });
+    _loadGradeData();
   }
   
   void _loadThemeColors() {
@@ -45,114 +62,64 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
     _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
   }
   
-  void _loadGradeData() {
-    // Mock data - in a real app, this would come from an API
-    _grades = [
-      {
-        'subject': 'Mathematics',
-        'grade': 'A',
-        'percentage': 92.5,
-        'feedback': 'Excellent work in algebra and calculus. Continue practicing word problems.',
-        'teacher': 'Mr. Johnson',
-        'date': DateTime.now().subtract(const Duration(days: 10)),
-        'color': Colors.blue,
-      },
-      {
-        'subject': 'Science',
-        'grade': 'B+',
-        'percentage': 87.0,
-        'feedback': 'Good understanding of physics concepts. Lab reports need more detail.',
-        'teacher': 'Ms. Garcia',
-        'date': DateTime.now().subtract(const Duration(days: 15)),
-        'color': Colors.green,
-      },
-      {
-        'subject': 'English Literature',
-        'grade': 'A-',
-        'percentage': 89.5,
-        'feedback': 'Strong analytical essays. Work on incorporating more textual evidence.',
-        'teacher': 'Mrs. Williams',
-        'date': DateTime.now().subtract(const Duration(days: 5)),
-        'color': Colors.purple,
-      },
-      {
-        'subject': 'History',
-        'grade': 'B',
-        'percentage': 85.0,
-        'feedback': 'Good understanding of historical events. Add more context in your answers.',
-        'teacher': 'Dr. Brown',
-        'date': DateTime.now().subtract(const Duration(days: 8)),
-        'color': Colors.orange,
-      },
-      {
-        'subject': 'Computer Science',
-        'grade': 'A+',
-        'percentage': 97.0,
-        'feedback': 'Outstanding programming assignments. Excellent problem-solving skills.',
-        'teacher': 'Mr. Davis',
-        'date': DateTime.now().subtract(const Duration(days: 3)),
-        'color': Colors.teal,
-      },
-      {
-        'subject': 'Art',
-        'grade': 'A',
-        'percentage': 91.0,
-        'feedback': 'Creative portfolio with strong technique. Experiment with more mediums.',
-        'teacher': 'Ms. Wilson',
-        'date': DateTime.now().subtract(const Duration(days: 12)),
-        'color': Colors.pink,
-      },
-    ];
+  Future<void> _loadGradeData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Use the user's database ID directly for the API call
+      // The API expects the student's database _id, not the studentId field
+      final grades = await _gradingService.getStudentGrades(widget.user.id);
+      
+      // Transform the data to include additional UI properties
+      final transformedGrades = grades.map((grade) {
+        final subject = grade['subject'] as String;
+        final percentage = grade['percentage'] as double;
+        
+        return {
+          ...grade,
+          'grade': _getGradeLetter(percentage),
+          'color': _getSubjectColor(subject),
+          'feedback': _generateFeedback(subject, percentage),
+          'teacher': grade['teacherName'],
+          'date': DateTime.now(), // Using current date since API doesn't provide assessment date
+        };
+      }).toList();
+
+      setState(() {
+        _grades = transformedGrades;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+      print('Error loading grades: $e');
+    }
+  }
+
+  Color _getSubjectColor(String subject) {
+    return _subjectColors[subject] ?? _subjectColors['default']!;
+  }
+
+  String _generateFeedback(String subject, double percentage) {
+    if (percentage >= 95) {
+      return 'Outstanding performance! Keep up the excellent work in $subject.';
+    } else if (percentage >= 85) {
+      return 'Very good work in $subject. Continue to strengthen your understanding.';
+    } else if (percentage >= 75) {
+      return 'Good progress in $subject. Focus on areas that need improvement.';
+    } else if (percentage >= 65) {
+      return 'Satisfactory performance in $subject. Additional practice recommended.';
+    } else {
+      return 'This subject needs more attention. Consider seeking additional help.';
+    }
   }
   
-  void _loadProgressData() {
-    // Create simple progress data for each subject
-    _progressData = {
-      'Mathematics': [
-        {'month': 'Sep', 'grade': 85.0},
-        {'month': 'Oct', 'grade': 87.0},
-        {'month': 'Nov', 'grade': 90.0},
-        {'month': 'Dec', 'grade': 92.5},
-      ],
-      'Science': [
-        {'month': 'Sep', 'grade': 82.0},
-        {'month': 'Oct', 'grade': 84.0},
-        {'month': 'Nov', 'grade': 86.0},
-        {'month': 'Dec', 'grade': 87.0},
-      ],
-      'English Literature': [
-        {'month': 'Sep', 'grade': 88.0},
-        {'month': 'Oct', 'grade': 86.0},
-        {'month': 'Nov', 'grade': 91.0},
-        {'month': 'Dec', 'grade': 89.5},
-      ],
-      'History': [
-        {'month': 'Sep', 'grade': 78.0},
-        {'month': 'Oct', 'grade': 82.0},
-        {'month': 'Nov', 'grade': 84.0},
-        {'month': 'Dec', 'grade': 85.0},
-      ],
-      'Computer Science': [
-        {'month': 'Sep', 'grade': 95.0},
-        {'month': 'Oct', 'grade': 94.0},
-        {'month': 'Nov', 'grade': 96.0},
-        {'month': 'Dec', 'grade': 97.0},
-      ],
-      'Art': [
-        {'month': 'Sep', 'grade': 88.0},
-        {'month': 'Oct', 'grade': 90.0},
-        {'month': 'Nov', 'grade': 93.0},
-        {'month': 'Dec', 'grade': 91.0},
-      ],
-    };
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -174,29 +141,98 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
             indicatorColor: Colors.white,
             tabs: const [
               Tab(text: 'Current Grades'),
-              Tab(text: 'Progress Tracking'),
             ],
           ),
-        ),
-        body: _isLoading 
-          ? Center(child: CircularProgressIndicator(color: _accentColor))
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildGradesTab(),
-                _buildProgressTab(),
-              ],
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadGradeData,
             ),
+          ],
+        ),
+        body: _buildBody(),
       ),
     );
   }
 
-  Widget _buildGradesTab() {
-    double gpa = 0;
-    for (var grade in _grades) {
-      gpa += grade['percentage'] as double;
+  Widget _buildBody() {
+    if (_isLoading) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: _accentColor),
+            const SizedBox(height: 16),
+            const Text('Loading your grades...'),
+          ],
+        ),
+      );
     }
-    gpa = gpa / _grades.length;
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to load grades',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadGradeData,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_grades.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.school_outlined, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No grades available',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your grades will appear here once they are entered by your teachers.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        _buildGradesTab(),
+      ],
+    );
+  }
+
+  Widget _buildGradesTab() {
+    // Calculate overall percentage (average of all grade percentages)
+    double overallPercentage = 0;
+    for (var grade in _grades) {
+      overallPercentage += grade['percentage'] as double;
+    }
+    overallPercentage = overallPercentage / _grades.length;
     
     return Column(
       children: [
@@ -222,7 +258,7 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
                 ),
                 child: Center(
                   child: Text(
-                    gpa.toStringAsFixed(1),
+                    overallPercentage.toStringAsFixed(1),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
@@ -237,7 +273,7 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Current GPA',
+                      'Overall Percentage',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 16,
@@ -245,7 +281,7 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${gpa.toStringAsFixed(2)}%',
+                      '${overallPercentage.toStringAsFixed(2)}%',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
@@ -255,7 +291,7 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
                   ],
                 ),
               ),
-              _getGradeLetterContainer(_getGradeLetter(gpa)),
+              _getGradeLetterContainer(_getGradeLetter(overallPercentage)),
             ],
           ),
         ),
@@ -294,9 +330,18 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
           grade['subject'] as String,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        subtitle: Text(
-          'Teacher: ${grade['teacher']} • ${DateFormat('MMM dd').format(grade['date'] as DateTime)}',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Class: ${grade['className']} (Grade ${grade['classGrade']}-${grade['classSection']})',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            Text(
+              'Teacher: ${grade['teacher']}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -316,7 +361,7 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Teacher Feedback:',
+                  'Performance Feedback:',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -342,179 +387,11 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildProgressTab() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _grades.length,
-      itemBuilder: (context, index) {
-        final subject = _grades[index];
-        return _buildSubjectProgressCard(subject);
-      },
-    );
-  }
   
-  Widget _buildSubjectProgressCard(Map<String, dynamic> subject) {
-    final subjectName = subject['subject'] as String;
-    final data = _progressData[subjectName]!;
-    final color = subject['color'] as Color;
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.book, color: color),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  subjectName,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                _getGradeLetterContainer(subject['grade'] as String),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text('Progress Timeline:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _buildSimpleProgressIndicator(data),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Started at: ${data.first['grade']}%',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-                Text(
-                  'Current: ${data.last['grade']}%',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  _calculateChange(data),
-                  style: TextStyle(
-                    fontSize: 12, 
-                    color: _getChangeColor(data),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildSimpleProgressIndicator(List<Map<String, dynamic>> data) {
-    return Row(
-      children: List.generate(data.length, (index) {
-        final item = data[index];
-        final isLast = index == data.length - 1;
-        
-        return Expanded(
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 3,
-                      color: index == 0 ? Colors.transparent : Colors.grey[300],
-                    ),
-                  ),
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: _getColorForGrade(item['grade'] as double),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.3),
-                          blurRadius: 2,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      height: 3,
-                      color: isLast ? Colors.transparent : Colors.grey[300],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                item['month'] as String,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[600],
-                ),
-              ),
-              Text(
-                '${(item['grade'] as double).toStringAsFixed(1)}%',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: index == data.length - 1 ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        );
-      }),
-    );
-  }
   
-  Color _getColorForGrade(double grade) {
-    if (grade >= 90) {
-      return Colors.green;
-    } else if (grade >= 80) {
-      return Colors.blue;
-    } else if (grade >= 70) {
-      return Colors.orange;
-    } else if (grade >= 60) {
-      return Colors.deepOrange;
-    } else {
-      return Colors.red;
-    }
-  }
   
-  String _calculateChange(List<Map<String, dynamic>> data) {
-    final first = data.first['grade'] as double;
-    final last = data.last['grade'] as double;
-    final change = last - first;
-    final sign = change >= 0 ? '+' : '';
-    return '$sign${change.toStringAsFixed(1)}%';
-  }
   
-  Color _getChangeColor(List<Map<String, dynamic>> data) {
-    final first = data.first['grade'] as double;
-    final last = data.last['grade'] as double;
-    final change = last - first;
-    if (change > 0) {
-      return Colors.green;
-    } else if (change < 0) {
-      return Colors.red;
-    } else {
-      return Colors.grey;
-    }
-  }
   
   Widget _getGradeLetterContainer(String grade) {
     Color color;

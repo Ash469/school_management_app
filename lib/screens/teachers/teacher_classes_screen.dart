@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
+import '../../services/teacher_service.dart';
+import '../../services/class_services.dart';
 import 'teacher_assignments_screen.dart';
 import 'teacher_attendance_screen.dart';
 import 'teacher_grading_screen.dart';
@@ -7,15 +9,19 @@ import 'teacher_grading_screen.dart';
 class TeacherClassesScreen extends StatefulWidget {
   final User user;
 
-  const TeacherClassesScreen({Key? key, required this.user}) : super(key: key);
+  const TeacherClassesScreen({super.key, required this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _TeacherClassesScreenState createState() => _TeacherClassesScreenState();
 }
 
 class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
   bool _isLoading = true;
   final List<Map<String, dynamic>> _classes = [];
+  late TeacherService _teacherService;
+  late ClassService _classService;
+  String _errorMessage = '';
 
   // Light theme colors matching assignment screen
   final Color _primaryColor = const Color(0xFF5E63B6);
@@ -36,58 +42,109 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
   @override
   void initState() {
     super.initState();
+    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+    _classService = ClassService(baseUrl: 'http://localhost:3000');
     _loadClasses();
   }
 
   Future<void> _loadClasses() async {
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+
+      print('🎓 Loading classes for teacher ID: ${widget.user.id}');
+      
+      // Get the teacher data with populated classes using the simple GET request
+      final teacherData = await _teacherService.getTeacherById(widget.user.id);
+      
+      print('🎓 Teacher data response: $teacherData');
+
+      // Clear existing classes
+      _classes.clear();
+
+      // Extract classes from the teacher data
+      final classes = teacherData['classes'] as List<dynamic>? ?? [];
+      
+      print('🎓 Found ${classes.length} classes in teacher data');
+
+      // Process each class
+      for (int i = 0; i < classes.length; i++) {
+        final classData = classes[i] as Map<String, dynamic>;
+        
+        // Get subjects from teacher's teachingSubs
+        final teachingSubs = teacherData['teachingSubs'] as List<dynamic>? ?? [];
+        final subjects = teachingSubs.join(', ').isNotEmpty ? teachingSubs.join(', ') : 'No subjects';
+
+        // Format the class data for display
+        final formattedClass = {
+          'id': classData['_id'] ?? classData['id'] ?? '',
+          'name': classData['name'] ?? '${classData['grade'] ?? 'Unknown'} ${classData['section'] ?? ''}',
+          'subject': subjects,
+          'students': 0, // Will be populated when we get actual student count
+          'schedule': _generateSchedule(classData),
+          'room': classData['room'] ?? 'TBD',
+          'nextClass': _getNextClass(),
+          'color': _classColors[i % _classColors.length],
+          'grade': classData['grade'] ?? 'Unknown',
+          'section': classData['section'] ?? '',
+          'year': classData['year']?.toString() ?? DateTime.now().year.toString(),
+        };
+
+        // Try to get students count for the class
+        try {
+          final students = await _classService.getClassStudents(classData['_id'] ?? '');
+          formattedClass['students'] = students.length;
+        } catch (e) {
+          print('🎓 Could not get students count for ${classData['_id']}: $e');
+          formattedClass['students'] = 0;
+        }
+
+        _classes.add(formattedClass);
+      }
+
+      print('🎓 Processed ${_classes.length} classes');
+      
+    } catch (e) {
+      print('🎓 Error loading classes: $e');
+      setState(() {
+        _errorMessage = 'Failed to load classes: ${e.toString()}';
+      });
+      
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading classes: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _generateSchedule(Map<String, dynamic> classData) {
+    // Generate a mock schedule - in a real app, this would come from the API
+    final days = ['Mon, Wed, Fri', 'Tue, Thu', 'Mon, Wed', 'Tue, Thu, Fri'];
+    final times = ['9:00 AM', '10:00 AM', '11:00 AM', '1:00 PM', '2:00 PM'];
     
-    setState(() {
-      _classes.addAll([
-        {
-          'id': '10A',
-          'name': 'Class 10A',
-          'subject': 'Mathematics',
-          'students': 32,
-          'schedule': 'Mon, Wed, Fri 9:00 AM',
-          'room': 'Room 101',
-          'nextClass': 'Tomorrow, 9:00 AM',
-          'color': _classColors[3], // Using the blue color
-        },
-        {
-          'id': '9B',
-          'name': 'Class 9B',
-          'subject': 'Mathematics',
-          'students': 28,
-          'schedule': 'Mon, Wed 11:00 AM',
-          'room': 'Room 103',
-          'nextClass': 'Today, 11:00 AM',
-          'color': _classColors[1], // Using the green color
-        },
-        {
-          'id': '8C',
-          'name': 'Class 8C',
-          'subject': 'Physics',
-          'students': 30,
-          'schedule': 'Tue, Thu 10:00 AM',
-          'room': 'Lab 2',
-          'nextClass': 'Tomorrow, 10:00 AM',
-          'color': _classColors[2], // Using the orange color
-        },
-        {
-          'id': '7D',
-          'name': 'Class 7D',
-          'subject': 'Physics',
-          'students': 26,
-          'schedule': 'Tue, Thu 1:00 PM',
-          'room': 'Lab 1',
-          'nextClass': 'Thursday, 1:00 PM',
-          'color': _classColors[0], // Using the purple color
-        },
-      ]);
-      _isLoading = false;
-    });
+    final dayIndex = (classData['_id']?.hashCode ?? 0) % days.length;
+    final timeIndex = (classData['_id']?.hashCode ?? 0) % times.length;
+    
+    return '${days[dayIndex]} ${times[timeIndex]}';
+  }
+
+  String _getNextClass() {
+    // Generate a mock next class time - in a real app, this would be calculated
+    final nextClasses = ['Today, 11:00 AM', 'Tomorrow, 9:00 AM', 'Tomorrow, 10:00 AM', 'Thursday, 1:00 PM'];
+    return nextClasses[DateTime.now().millisecond % nextClasses.length];
   }
 
   @override
@@ -106,6 +163,10 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _loadClasses,
+          ),
+          IconButton(
             icon: const Icon(Icons.notifications, color: Colors.white),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -121,13 +182,60 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
       backgroundColor: _backgroundColor,
       body: _isLoading
         ? Center(child: CircularProgressIndicator(color: _primaryColor))
-        : _classes.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _classes.length,
-              itemBuilder: (context, index) => _buildClassCard(_classes[index]),
+        : _errorMessage.isNotEmpty
+          ? _buildErrorState()
+          : _classes.isEmpty
+            ? _buildEmptyState()
+            : RefreshIndicator(
+                onRefresh: _loadClasses,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _classes.length,
+                  itemBuilder: (context, index) => _buildClassCard(_classes[index]),
+                ),
+              ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 80,
+            color: Colors.red.withOpacity(0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Error Loading Classes',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: _textPrimaryColor,
             ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage,
+            style: TextStyle(
+              fontSize: 16,
+              color: _textSecondaryColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _loadClasses,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 

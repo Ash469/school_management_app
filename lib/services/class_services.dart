@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as Math;
 import 'package:http/http.dart' as http;
 import '../utils/storage_util.dart';
+import '../services/student_service.dart';  // Import StudentService
 
 class ClassService {
   final String baseUrl;
@@ -55,6 +56,7 @@ class ClassService {
       print('📊 Making API request for classes with schoolId: $schoolId');
       print('📊 Headers: $headers');
 
+      // Modified to explicitly include schoolId in the query parameters
       final url = '$baseUrl/classes?schoolId=$schoolId';
       print('📊 URL: $url');
 
@@ -69,15 +71,25 @@ class ClassService {
         // Parse the outer JSON structure first
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
         
+        List<dynamic> data;
         // Check if the response has a 'success' and 'data' field (new format)
         if (jsonResponse.containsKey('success') && jsonResponse.containsKey('data')) {
-          final List<dynamic> data = jsonResponse['data'];
-          return data.map((item) => item as Map<String, dynamic>).toList();
+          data = jsonResponse['data'];
         } else {
           // Handle the old format where response is directly an array
-          final List<dynamic> data = json.decode(response.body);
-          return data.map((item) => item as Map<String, dynamic>).toList();
+          data = json.decode(response.body);
         }
+        
+        // Filter the classes to ensure they match the stored schoolId
+        final filteredData = data.where((item) {
+          if (item is Map<String, dynamic>) {
+            // Check if the class has a schoolId field that matches our stored schoolId
+            return item['schoolId'] == schoolId;
+          }
+          return false;
+        }).toList();
+        
+        return filteredData.map((item) => item as Map<String, dynamic>).toList();
       } else {
         print('📊 Error response body: ${response.body}');
         throw Exception('Failed to load classes: ${response.statusCode} - ${response.body}');
@@ -301,20 +313,43 @@ class ClassService {
       final headers = await _getHeaders();
       final schoolId = await _getSchoolId();
 
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
       final url = '$baseUrl/classes/$classId/teachers?schoolId=$schoolId';
+      print('📊 Get class teachers URL: $url');
       
       final response = await http.get(
         Uri.parse(url),
         headers: headers,
       );
 
+      print('📊 Get class teachers response status: ${response.statusCode}');
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => item as Map<String, dynamic>).toList();
+        print('📊 Response body preview: ${response.body}');
+        final jsonResponse = json.decode(response.body);
+        
+        // Handle the new response format with success and data fields
+        if (jsonResponse is Map<String, dynamic> && 
+            jsonResponse.containsKey('success') && 
+            jsonResponse.containsKey('data')) {
+          final List<dynamic> data = jsonResponse['data'];
+          return data.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        // Handle the old format where response is directly an array
+        if (jsonResponse is List) {
+          return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        return [];
       } else {
-        throw Exception('Failed to load class teachers: ${response.statusCode}');
+        print('📊 Error response body: ${response.body}');
+        throw Exception('Failed to load class teachers: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
+      print('📊 Error getting class teachers: $e');
       throw Exception('Error getting class teachers: $e');
     }
   }
@@ -328,9 +363,9 @@ class ClassService {
         throw Exception('School ID not found');
       }
 
+      // Format the request body correctly with teacherIds array
       final body = json.encode({
-        'teacherIds': teacherIds,
-        'schoolId': schoolId,
+        "teacherIds": teacherIds
       });
 
       final url = '$baseUrl/classes/$classId/teachers?schoolId=$schoolId';
@@ -377,21 +412,49 @@ class ClassService {
       final headers = await _getHeaders();
       final schoolId = await _getSchoolId();
 
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
 
       final url = '$baseUrl/classes/$classId/subjects?schoolId=$schoolId';
+      print('📊 Get class subjects URL: $url');
       
       final response = await http.get(
         Uri.parse(url),
         headers: headers,
       );
 
+      print('📊 Get class subjects response status: ${response.statusCode}');
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => item.toString()).toList();
+        print('📊 Response body preview: ${response.body}');
+        final jsonResponse = json.decode(response.body);
+        
+        // Handle the new response format with success and data fields
+        if (jsonResponse is Map<String, dynamic> && 
+            jsonResponse.containsKey('success') && 
+            jsonResponse.containsKey('data')) {
+          final List<dynamic> data = jsonResponse['data'];
+          return data.map((item) => item.toString()).toList();
+        }
+        
+        // Handle the old format where response is directly an array
+        if (jsonResponse is List) {
+          return jsonResponse.map((item) => item.toString()).toList();
+        }
+        
+        // Handle case where subjects might be in a different structure
+        if (jsonResponse is Map<String, dynamic> && jsonResponse.containsKey('subjects')) {
+          final List<dynamic> subjects = jsonResponse['subjects'];
+          return subjects.map((item) => item.toString()).toList();
+        }
+        
+        return [];
       } else {
-        throw Exception('Failed to load class subjects: ${response.statusCode}');
+        print('📊 Error response body: ${response.body}');
+        throw Exception('Failed to load class subjects: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
+      print('📊 Error getting class subjects: $e');
       throw Exception('Error getting class subjects: $e');
     }
   }
@@ -468,6 +531,136 @@ class ClassService {
     } catch (e) {
       print('📊 Error getting class analytics: $e');
       throw Exception('Error getting class analytics: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getClassStudents(String classId) async {
+    try {
+      final headers = await _getHeaders();
+      final schoolId = await _getSchoolId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      final url = '$baseUrl/classes/$classId/students?schoolId=$schoolId';
+      print('📊 Get class students URL: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: headers,
+      );
+
+      print('📊 Get class students response status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        print('📊 Response body preview: ${response.body}');
+
+        final jsonResponse = json.decode(response.body);
+
+        // Handle the new response format with success and data fields
+        if (jsonResponse is Map<String, dynamic> &&
+            jsonResponse.containsKey('success') &&
+            jsonResponse.containsKey('data')) {
+          final List<dynamic> data = jsonResponse['data'];
+          return data.map((item) => item as Map<String, dynamic>).toList();
+        }
+
+        // Handle the old format where response is directly an array
+        if (jsonResponse is List) {
+          return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
+        }
+
+        return [];
+      } else {
+        print('📊 Error response body: ${response.body}');
+        throw Exception('Failed to get class students: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('📊 Error getting class students: $e');
+      throw Exception('Error getting class students: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> setClassStudents(String classId, List<String> studentIds) async {
+    try {
+      final headers = await _getHeaders();
+      final schoolId = await _getSchoolId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      final body = json.encode({
+        'studentIds': studentIds,
+        'schoolId': schoolId,
+      });
+
+      final url = '$baseUrl/classes/$classId/students?schoolId=$schoolId';
+      print('📊 Set class students URL: $url');
+      print('📊 Set class students body: $body');
+
+      final response = await http.put(
+        Uri.parse(url),
+        headers: headers,
+        body: body,
+      );
+
+      print('📊 Set class students response status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        print('📊 Response body preview: ${response.body}');
+
+        final jsonResponse = json.decode(response.body);
+
+        // Handle the new response format with success and data fields
+        if (jsonResponse is Map<String, dynamic> &&
+            jsonResponse.containsKey('success') &&
+            jsonResponse.containsKey('data')) {
+          final List<dynamic> data = jsonResponse['data'];
+          return data.map((item) => item as Map<String, dynamic>).toList();
+        }
+
+        // Handle the old format where response is directly an array
+        if (jsonResponse is List) {
+          return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
+        }
+
+        throw Exception('Unexpected response format');
+      } else {
+        print('📊 Error response body: ${response.body}');
+        throw Exception('Failed to set class students: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('📊 Error setting class students: $e');
+      throw Exception('Error setting class students: $e');
+    }
+  }
+
+  // New method to get all students using StudentService
+  Future<List<Map<String, dynamic>>> getAllStudentsForClass(String classId) async {
+    try {
+      final schoolId = await _getSchoolId();
+      
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+      
+      // Initialize StudentService with the same baseUrl
+      final studentService = StudentService(baseUrl: baseUrl);
+      
+      // Get all students from StudentService, filtered by classId
+      final students = await studentService.getAllStudents(classId: classId);
+      
+      // Map the students to a simpler structure with just the needed fields
+      return students.map((student) {
+        return {
+          '_id': student['_id'] ?? '',
+          'name': student['name'] ?? '',
+          'studentId': student['studentId'] ?? '',
+        };
+      }).toList();
+    } catch (e) {
+      print('📊 Error getting students for class: $e');
+      throw Exception('Error getting students for class: $e');
     }
   }
 }

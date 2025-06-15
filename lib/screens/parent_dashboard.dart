@@ -6,6 +6,10 @@ import '../screens/parents/attendance_screen.dart';
 import '../screens/parents/fee_management_screen.dart';
 import '../screens/parents/performance_screen.dart';
 import 'school_selection_screen.dart';
+import '../services/student_service.dart';
+import '../services/attendance_service.dart';
+import '../services/grading_service.dart';
+import '../services/class_services.dart';
 
 class ParentDashboard extends StatefulWidget {
   final User user;
@@ -27,6 +31,12 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   late Color _tertiaryColor;
   late List<Color> _gradientColors;
 
+  // Services
+  late StudentService _studentService;
+  late AttendanceService _attendanceService;
+  late GradingService _gradingService;
+  late ClassService _classService;
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +44,13 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+    
+    // Initialize services with baseUrl like other dashboards
+    const baseUrl = 'http://localhost:3000';
+    _studentService = StudentService(baseUrl: baseUrl);
+    _attendanceService = AttendanceService(baseUrl: baseUrl);
+    _gradingService = GradingService(baseUrl: baseUrl);
+    _classService = ClassService(baseUrl: baseUrl);
     
     _loadThemeColors();
     _loadDashboardData();
@@ -43,40 +60,207 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   // Student data for the children of the parent
   List<Map<String, dynamic>> _studentsData = [];
   
-  void _loadStudentsData() {
-    // Simulated data for parent's children
-    _studentsData = [
-      {
-        'name': 'John Smith',
-        'grade': '10th Grade',
-        'section': 'A',
-        'rollNumber': '1023',
-        'image': 'https://randomuser.me/api/portraits/children/1.jpg',
-        'attendance': '95%',
-        'gpa': '3.8',
-        'fees': {
-          'status': 'Paid',
-          'dueAmount': '0',
-          'nextDueDate': 'Apr 15, 2023',
+  Future<void> _loadStudentsData() async {
+    try {
+      print('👨‍👩‍👧‍👦 Loading students for parent: ${widget.user.id}');
+      
+      // Get all students
+      final allStudents = await _studentService.getAllStudents();
+      print('👨‍👩‍👧‍👦 Total students found: ${allStudents.length}');
+      
+      // Filter students that belong to this parent
+      final parentStudents = allStudents.where((student) {
+        final parents = student['parents'] as List<dynamic>? ?? [];
+        
+        // Check if this parent's user ID is in the student's parents list
+        for (var parent in parents) {
+          if (parent is Map<String, dynamic>) {
+            // Check various possible parent ID fields
+            final parentUserId = parent['userId'] ?? parent['_id'] ?? parent['id'];
+            if (parentUserId == widget.user.id) {
+              return true;
+            }
+            
+            // Also check if parent email matches (alternative matching)
+            final parentEmail = parent['email'];
+            if (parentEmail != null && parentEmail == widget.user.email) {
+              return true;
+            }
+          }
         }
-      },
-      {
-        'name': 'Emily Smith',
-        'grade': '7th Grade',
-        'section': 'B',
-        'rollNumber': '2045',
-        'image': 'https://randomuser.me/api/portraits/children/2.jpg',
-        'attendance': '92%',
-        'gpa': '3.9',
-        'fees': {
-          'status': 'Pending',
-          'dueAmount': '125',
-          'nextDueDate': 'Mar 30, 2023',
-        }
-      },
-    ];
+        return false;
+      }).toList();
+      
+      print('👨‍👩‍👧‍👦 Found ${parentStudents.length} children for parent');
+      
+      // Transform student data to the format expected by the UI
+      final transformedStudents = await Future.wait(
+        parentStudents.map((student) async {
+          // Get real attendance data
+          final attendanceData = await _getStudentAttendance(student['_id']);
+          
+          // Get real grade data
+          final gradeData = await _getStudentGrades(student['_id']);
+          
+          // Get class information for grade and section
+          final classInfo = await _getClassInfo(student['classId']);
+          
+          return {
+            '_id': student['_id'] ?? '',
+            'name': student['name'] ?? 'Unknown Student',
+            'grade': classInfo['grade'] ?? 'Unknown Grade',
+            'section': classInfo['section'] ?? 'A',
+            'rollNumber': student['studentId'] ?? '',
+            'image': _getStudentImage(student),
+            'attendance': attendanceData['percentage'],
+            'gpa': gradeData['gpa'],
+            'fees': _calculateMockFeeStatus(), // Keep mock for now, replace with fee service
+            'email': student['email'] ?? '',
+            'phone': student['phone'] ?? '',
+            'dob': student['dob'] ?? '',
+            'gender': student['gender'] ?? '',
+            'address': student['address'] ?? '',
+          };
+        }).toList(),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _studentsData = transformedStudents;
+        });
+      }
+      
+    } catch (e) {
+      print('👨‍👩‍👧‍👦 Error loading students: $e');
+      if (mounted) {
+        setState(() {
+          _studentsData = [];
+        });
+      }
+    }
   }
-  
+
+  // Get real attendance data for a student
+  Future<Map<String, dynamic>> _getStudentAttendance(String studentId) async {
+    try {
+      final attendanceRecords = await _attendanceService.listAttendance(studentId: studentId);
+      
+      if (attendanceRecords.isEmpty) {
+        return {'percentage': '0%', 'presentDays': 0, 'totalDays': 0};
+      }
+      
+      int totalDays = 0;
+      int presentDays = 0;
+      
+      for (var record in attendanceRecords) {
+        if (record['entries'] is List) {
+          for (var entry in record['entries']) {
+            if (entry['studentId'] == studentId) {
+              totalDays++;
+              if (entry['status'] == 'present') {
+                presentDays++;
+              }
+            }
+          }
+        }
+      }
+      
+      final percentage = totalDays > 0 ? ((presentDays / totalDays) * 100).round() : 0;
+      
+      return {
+        'percentage': '$percentage%',
+        'presentDays': presentDays,
+        'totalDays': totalDays,
+      };
+    } catch (e) {
+      print('📊 Error getting attendance for student $studentId: $e');
+      return {'percentage': 'N/A', 'presentDays': 0, 'totalDays': 0};
+    }
+  }
+
+  // Get real grade data for a student
+  Future<Map<String, dynamic>> _getStudentGrades(String studentId) async {
+    try {
+      final grades = await _gradingService.getStudentGrades(studentId);
+      
+      if (grades.isEmpty) {
+        return {'gpa': '0.0', 'average': 0.0};
+      }
+      
+      final average = GradingService.calculateOverallAverage(grades);
+      final gpa = (average / 25).clamp(0.0, 4.0); // Convert percentage to 4.0 scale
+      
+      return {
+        'gpa': gpa.toStringAsFixed(1),
+        'average': average,
+      };
+    } catch (e) {
+      print('📊 Error getting grades for student $studentId: $e');
+      return {'gpa': 'N/A', 'average': 0.0};
+    }
+  }
+
+  // Get class information
+  Future<Map<String, dynamic>> _getClassInfo(dynamic classId) async {
+    try {
+      if (classId == null) return {'grade': 'Unknown', 'section': 'A'};
+      
+      String actualClassId;
+      if (classId is Map<String, dynamic>) {
+        actualClassId = classId['_id'] ?? '';
+      } else {
+        actualClassId = classId.toString();
+      }
+      
+      if (actualClassId.isEmpty) return {'grade': 'Unknown', 'section': 'A'};
+      
+      final classData = await _classService.getClassById(actualClassId);
+      
+      return {
+        'grade': classData['grade'] ?? 'Unknown',
+        'section': classData['section'] ?? 'A',
+        'name': classData['name'] ?? 'Unknown Class',
+      };
+    } catch (e) {
+      print('📊 Error getting class info: $e');
+      return {'grade': 'Unknown', 'section': 'A'};
+    }
+  }
+
+  // Helper methods for mock data (replace with actual service calls)
+  int _calculateMockAttendance() {
+    // Mock attendance calculation - replace with AttendanceService call
+    return 90 + (DateTime.now().millisecond % 10); // 90-99%
+  }
+
+  double _calculateMockGPA() {
+    // Mock GPA calculation - replace with GradingService call
+    return 3.5 + (DateTime.now().millisecond % 5) / 10; // 3.5-3.9
+  }
+
+  Map<String, dynamic> _calculateMockFeeStatus() {
+    // Mock fee status - replace with actual fee service call
+    final isPending = DateTime.now().millisecond % 3 == 0;
+    return {
+      'status': isPending ? 'Pending' : 'Paid',
+      'dueAmount': isPending ? '125' : '0',
+      'nextDueDate': isPending ? 'Apr 15, 2024' : 'May 15, 2024',
+    };
+  }
+
+  String _getStudentImage(Map<String, dynamic> student) {
+    // Return a default student image or use profile picture if available
+    final profilePicture = student['profilePicture'];
+    if (profilePicture != null && profilePicture.isNotEmpty) {
+      return profilePicture;
+    }
+    
+    // Generate a consistent random image based on student ID
+    final studentId = student['_id'] ?? student['studentId'] ?? '';
+    final imageIndex = studentId.hashCode.abs() % 10 + 1;
+    return 'https://randomuser.me/api/portraits/children/$imageIndex.jpg';
+  }
+
   void _loadThemeColors() {
     _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
     _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
@@ -355,11 +539,38 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   
   Widget _buildStudentsCarousel() {
     if (_studentsData.isEmpty) {
-      return const Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Center(child: Text('No student data available')),
+      return Card(
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+        child: Container(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.family_restroom,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No Children Found',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No students are associated with your account.\nPlease contact the school administration.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -403,6 +614,22 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                           CircleAvatar(
                             radius: 30,
                             backgroundImage: NetworkImage(student['image'] as String),
+                            onBackgroundImageError: (exception, stackTrace) {
+                              // Handle image loading error
+                              print('Error loading student image: $exception');
+                            },
+                            child: student['image'] == null || (student['image'] as String).isEmpty
+                                ? Text(
+                                    (student['name'] as String).isNotEmpty 
+                                        ? (student['name'] as String)[0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : null,
                           ),
                           const SizedBox(width: 16),
                           Expanded(

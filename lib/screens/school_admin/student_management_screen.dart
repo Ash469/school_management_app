@@ -1,127 +1,158 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_theme.dart';
+import '../../services/student_service.dart';
+import '../../services/class_services.dart'; // Add import for ClassService
 
 class StudentManagementScreen extends StatefulWidget {
-  const StudentManagementScreen({Key? key}) : super(key: key);
+  const StudentManagementScreen({super.key});
 
   @override
+  // ignore: library_private_types_in_public_api
   _StudentManagementScreenState createState() => _StudentManagementScreenState();
 }
 
 class _StudentManagementScreenState extends State<StudentManagementScreen> {
-  final List<Map<String, dynamic>> _students = [
-    {
-      'id': 'S001',
-      'name': 'Alice Smith',
-      'grade': '10',
-      'class': 'Class 10A',
-      'gender': 'Female',
-      'dob': '2008-05-12',
-      'address': '123 Main St, Anytown',
-      'contact': '+1 (555) 123-4567',
-      'parent': 'John Smith',
-      'parentContact': '+1 (555) 123-4568',
-      'email': 'alice.smith@example.com',
-      'attendance': '95%',
-      'academicRecord': [
-        {'subject': 'Mathematics', 'grade': 'A'},
-        {'subject': 'Science', 'grade': 'A-'},
-        {'subject': 'English', 'grade': 'B+'},
-        {'subject': 'History', 'grade': 'A'},
-      ]
-    },
-    {
-      'id': 'S002',
-      'name': 'Bob Johnson',
-      'grade': '9',
-      'class': 'Class 9B',
-      'gender': 'Male',
-      'dob': '2009-08-23',
-      'address': '456 Oak St, Anytown',
-      'contact': '+1 (555) 234-5678',
-      'parent': 'Mary Johnson',
-      'parentContact': '+1 (555) 234-5679',
-      'email': 'bob.johnson@example.com',
-      'attendance': '88%',
-      'academicRecord': [
-        {'subject': 'Mathematics', 'grade': 'B'},
-        {'subject': 'Science', 'grade': 'B+'},
-        {'subject': 'English', 'grade': 'A-'},
-        {'subject': 'History', 'grade': 'B'},
-      ]
-    },
-    {
-      'id': 'S003',
-      'name': 'Charlie Davis',
-      'grade': '10',
-      'class': 'Class 10A',
-      'gender': 'Male',
-      'dob': '2008-02-15',
-      'address': '789 Pine St, Anytown',
-      'contact': '+1 (555) 345-6789',
-      'parent': 'Sarah Davis',
-      'parentContact': '+1 (555) 345-6780',
-      'email': 'charlie.davis@example.com',
-      'attendance': '92%',
-      'academicRecord': [
-        {'subject': 'Mathematics', 'grade': 'A'},
-        {'subject': 'Science', 'grade': 'A'},
-        {'subject': 'English', 'grade': 'B'},
-        {'subject': 'History', 'grade': 'B+'},
-      ]
-    },
-    {
-      'id': 'S004',
-      'name': 'Diana Wilson',
-      'grade': '9',
-      'class': 'Class 9B',
-      'gender': 'Female',
-      'dob': '2009-11-30',
-      'address': '101 Elm St, Anytown',
-      'contact': '+1 (555) 456-7890',
-      'parent': 'Robert Wilson',
-      'parentContact': '+1 (555) 456-7891',
-      'email': 'diana.wilson@example.com',
-      'attendance': '78%',
-      'academicRecord': [
-        {'subject': 'Mathematics', 'grade': 'C+'},
-        {'subject': 'Science', 'grade': 'B-'},
-        {'subject': 'English', 'grade': 'B'},
-        {'subject': 'History', 'grade': 'C'},
-      ]
-    },
-  ];
+  // Replace dummy data with API data
+  List<Map<String, dynamic>> _students = [];
+  List<Map<String, dynamic>> _filteredStudents = [];
+  bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
+
+  // Initialize the student and class services
+  late StudentService _studentService;
+  late ClassService _classService;
+  
+  // List to store available classes
+  List<Map<String, dynamic>> _availableClasses = [];
+  bool _loadingClasses = false;
+  bool _classesPreloaded = false;  // Track if classes are preloaded
+
+  // Cache timestamp to know when classes were last loaded
+  DateTime? _lastClassesLoadTime;
 
   final _searchController = TextEditingController();
-  List<Map<String, dynamic>> _filteredStudents = [];
-  bool _isLoading = false;
   String _selectedFilter = 'All';
 
   // Theme colors
   late Color _primaryColor;
   late Color _accentColor;
   late Color _tertiaryColor;
-  late List<Color> _gradientColors;
-  late List<Color> _cardColors;
 
   @override
   void initState() {
     super.initState();
     _loadThemeColors();
-    _filteredStudents = List.from(_students);
+    _studentService = StudentService(baseUrl: 'http://localhost:3000');
+    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _loadStudents();
+    _preloadClasses(); // Preload classes instead of just loading them
   }
 
   void _loadThemeColors() {
     _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
     _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
     _tertiaryColor = AppTheme.getTertiaryColor(AppTheme.defaultTheme);
-    _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
-    _cardColors = [
-      const Color(0xFFE3F2FD), // Vibrant blue shade
-      const Color(0xFFE0F2F1), // Vibrant teal shade
-      const Color(0xFFFFF8E1), // Vibrant amber shade
-      const Color(0xFFF3E5F5), // Vibrant purple shade
-    ];
+  }
+
+  // Load students from API
+  Future<void> _loadStudents() async {
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _errorMessage = '';
+    });
+
+    try {
+      // Get all students from the service
+      final students = await _studentService.getAllStudents();
+      
+      // Map API response to our expected data format
+      final formattedStudents = students.map((student) {
+        // Extract class info
+        final className = student['classId'] is Map ? 
+            'Class ${student['classId']['grade']}${student['classId']['section']}' : 
+            'Unknown Class';
+        
+        // Extract parent info
+        final parents = student['parents'] is List ? student['parents'] as List : [];
+        final parentName = parents.isNotEmpty && parents[0] is Map ? parents[0]['name'] : 'Unknown';
+        final parentContact = parents.isNotEmpty && parents[0] is Map ? parents[0]['phone'] : '';
+        
+        // Format date of birth
+        final dob = student['dob'] != null ? _formatDate(student['dob']) : 'Unknown';
+        
+        // Extract academic record
+        final academicReport = student['academicReport'] is Map ? student['academicReport'] : {};
+        final attendance = academicReport['attendancePct'] != null ? 
+            '${academicReport['attendancePct']}%' : 'N/A';
+        
+        final grades = academicReport['grades'] is List ? 
+            (academicReport['grades'] as List).map((grade) => {
+              'subject': grade['subject'] ?? 'Unknown',
+              'grade': grade['grade'] ?? 'N/A',
+            }).toList() : [];
+
+        return {
+          'id': student['studentId'] ?? '',
+          'name': student['name'] ?? 'Unknown',
+          'grade': student['classId'] is Map ? student['classId']['grade'] : '',
+          'class': className,
+          'gender': student['gender'] ?? 'Unknown',
+          'dob': dob,
+          'address': student['address'] ?? 'N/A',
+          'contact': student['phone'] ?? 'N/A',
+          'email': student['email'] ?? 'N/A',
+          'parent': parentName,
+          'parentContact': parentContact,
+          'attendance': attendance,
+          'academicRecord': grades,
+          'feePaid': student['feePaid'] ?? false,
+          '_id': student['_id'] ?? '', // Store the MongoDB ID for API operations
+        };
+      }).toList();
+      
+      setState(() {
+        _students = formattedStudents;
+        _filteredStudents = List.from(_students);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = e.toString();
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load students: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: _loadStudents,
+            textColor: Colors.white,
+          ),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    }
+  }
+  
+  // Format date string from API
+  String _formatDate(String dateStr) {
+    try {
+      final DateTime date = DateTime.parse(dateStr);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateStr;
+    }
+  }
+  
+  // Refresh students data
+  Future<void> _refreshStudents() async {
+    await _loadStudents();
+    _filterStudents(_searchController.text);
   }
 
   void _filterStudents(String query) {
@@ -152,6 +183,128 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     });
   }
 
+  // Preload classes with caching mechanism
+  Future<void> _preloadClasses() async {
+    if (_loadingClasses) return; // Prevent multiple simultaneous loads
+    
+    setState(() {
+      _loadingClasses = true;
+    });
+    
+    try {
+      print('🔍 Preloading available classes from API...');
+      final classes = await _classService.getAllClasses();
+      
+      setState(() {
+        _availableClasses = classes.map((classData) {
+          final String grade = classData['grade'] ?? '';
+          final String section = classData['section'] ?? '';
+          final String name = classData['name'] ?? 'Class $grade$section';
+          final String id = classData['_id'] ?? '';
+          
+          return {
+            'id': id,
+            'name': name,
+            'grade': grade,
+            'section': section,
+          };
+        }).toList();
+        
+        _loadingClasses = false;
+        _classesPreloaded = true;
+        _lastClassesLoadTime = DateTime.now();
+        
+        print('✅ Preloaded ${_availableClasses.length} classes successfully');
+      });
+    } catch (e) {
+      print('❌ Error preloading classes: $e');
+      setState(() {
+        _loadingClasses = false;
+      });
+      
+      // Show error only if the screen is mounted
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to preload classes: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: _preloadClasses,
+              textColor: Colors.white,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  // Load available classes from API
+  Future<void> _loadAvailableClasses({bool forceRefresh = false}) async {
+    // Skip if already loading
+    if (_loadingClasses) {
+      print('🔍 Classes already loading, skipping duplicate request');
+      return;
+    }
+    
+    // If classes are already loaded and refresh is not forced, use cached data
+    if (_classesPreloaded && !forceRefresh && _lastClassesLoadTime != null) {
+      final timeSinceLastLoad = DateTime.now().difference(_lastClassesLoadTime!);
+      
+      // Use cached data if loaded less than 30 seconds ago
+      if (timeSinceLastLoad.inSeconds < 30) {
+        print('🔍 Using cached class data (${timeSinceLastLoad.inSeconds}s old)');
+        return;
+      }
+    }
+    
+    print('🔍 Loading available classes from API...');
+    setState(() {
+      _loadingClasses = true;
+    });
+
+    try {
+      final classes = await _classService.getAllClasses();
+      print('🔍 Classes loaded successfully! Count: ${classes.length}');
+      
+      // Format classes for display
+      setState(() {
+        _availableClasses = classes.map((classData) {
+          final String grade = classData['grade'] ?? '';
+          final String section = classData['section'] ?? '';
+          final String name = classData['name'] ?? 'Class $grade$section';
+          final String id = classData['_id'] ?? '';
+          
+          return {
+            'id': id,
+            'name': name,
+            'grade': grade,
+            'section': section,
+          };
+        }).toList();
+        
+        _loadingClasses = false;
+        _classesPreloaded = true;
+        _lastClassesLoadTime = DateTime.now();
+      });
+    } catch (e) {
+      print('❌ Error loading classes: $e');
+      setState(() {
+        _loadingClasses = false;
+      });
+      
+      // Show error message if not in initialization
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load classes: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -176,6 +329,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshStudents,
+          ),
+          IconButton(
             icon: Icon(Icons.notifications, color: _accentColor),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -185,445 +342,421 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.white, Colors.grey.shade100],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.shade200,
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search students...',
-                    prefixIcon: Icon(Icons.search, color: _accentColor),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16.0),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0.0),
-                    fillColor: Colors.grey.shade50,
-                    filled: true,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16.0),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16.0),
-                      borderSide: BorderSide(color: _accentColor),
-                    ),
-                  ),
-                  onChanged: _filterStudents,
-                ),
-                const SizedBox(height: 16),
-                Row(
+      body: _isLoading 
+          ? Center(child: CircularProgressIndicator(color: _accentColor))
+          : _hasError 
+              ? _buildErrorView()
+              : Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.all(16.0),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                          colors: [Colors.white, Colors.grey.shade100],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _selectedFilter == 'All'
-                                ? 'All Students'
-                                : 'Grade $_selectedFilter Students',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${_filteredStudents.length}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.shade200,
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                    ),
-                    const Spacer(),
-                    OutlinedButton.icon(
-                      icon: Icon(Icons.filter_list, color: _accentColor),
-                      label: Text(
-                        'Filter', 
-                        style: TextStyle(color: _accentColor)
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: _accentColor),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      onPressed: _showFilterOptions,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(30),
-                  topRight: Radius.circular(30),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.shade200,
-                    blurRadius: 8,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: _accentColor))
-                  : _filteredStudents.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.person_off,
-                                size: 64,
-                                color: Colors.grey.shade400,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Search students...',
+                              prefixIcon: Icon(Icons.search, color: _accentColor),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                                borderSide: BorderSide.none,
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No students found',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 0.0),
+                              fillColor: Colors.grey.shade50,
+                              filled: true,
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                                borderSide: BorderSide(color: Colors.grey.shade200),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Try changing your search criteria',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey.shade500,
-                                ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                                borderSide: BorderSide(color: _accentColor),
                               ),
-                            ],
+                            ),
+                            onChanged: _filterStudents,
                           ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
-                          itemCount: _filteredStudents.length,
-                          itemBuilder: (context, index) {
-                            final student = _filteredStudents[index];
-                            // Create gradient colors based on index
-                            final List<Color> gradientColors;
-                            switch (index % 4) {
-                              case 0:
-                                gradientColors = [
-                                  const Color(0xFF90CAF9),
-                                  const Color(0xFFBBDEFB),
-                                ];
-                                break;
-                              case 1:
-                                gradientColors = [
-                                  const Color(0xFF80CBC4),
-                                  const Color(0xFFB2DFDB),
-                                ];
-                                break;
-                              case 2:
-                                gradientColors = [
-                                  const Color(0xFFFFD54F),
-                                  const Color(0xFFFFE082),
-                                ];
-                                break;
-                              case 3:
-                                gradientColors = [
-                                  const Color(0xFFCE93D8),
-                                  const Color(0xFFE1BEE7),
-                                ];
-                                break;
-                              default:
-                                gradientColors = [
-                                  const Color(0xFF90CAF9),
-                                  const Color(0xFFBBDEFB),
-                                ];
-                            }
-
-                            return Card(
-                              elevation: 3,
-                              shadowColor: gradientColors[0].withOpacity(0.3),
-                              margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(18),
-                                onTap: () => _showStudentDetails(student),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    // Header section with gradient
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: gradientColors,
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(18),
-                                          topRight: Radius.circular(18),
-                                        ),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: gradientColors[0].withOpacity(0.3),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Text(
-                                              student['name'].toString().substring(0, 1),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 18,
-                                                color: gradientColors[0],
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  student['name'] as String,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 18,
-                                                    color: Colors.white,
-                                                    shadows: [
-                                                      Shadow(
-                                                        offset: Offset(0, 1),
-                                                        blurRadius: 2,
-                                                        color: Color(0x50000000),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'ID: ${student['id']} | Grade: ${student['grade']}',
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 14,
-                                                    shadows: [
-                                                      Shadow(
-                                                        offset: Offset(0, 1),
-                                                        blurRadius: 2,
-                                                        color: Color(0x50000000),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
+                                    Text(
+                                      _selectedFilter == 'All'
+                                          ? 'All Students'
+                                          : 'Grade $_selectedFilter Students',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
                                       ),
                                     ),
-                                    
-                                    // Footer with essential info and actions
+                                    const SizedBox(width: 8),
                                     Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: Colors.grey.shade50,
-                                        borderRadius: const BorderRadius.only(
-                                          bottomLeft: Radius.circular(18),
-                                          bottomRight: Radius.circular(18),
-                                        ),
-                                        border: Border(
-                                          top: BorderSide(
-                                            color: gradientColors[0].withOpacity(0.2),
-                                            width: 1,
-                                          ),
-                                        ),
+                                        color: Colors.white.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(Icons.school, size: 16, color: gradientColors[0]),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                student['class'] as String,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w500,
-                                                  color: Colors.grey.shade800
-                                                ),
-                                              ),
-                                              const Spacer(),
-                                              Row(
-                                                children: [
-                                                  Icon(Icons.access_time, size: 16, color: Colors.blue.shade700),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    student['attendance'] as String,
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w500,
-                                                      color: Colors.blue.shade700
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Row(
-                                                  children: [
-                                                    Icon(Icons.badge, size: 16, color: Colors.orange.shade700),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      'Avg: ${_getAverageGrade(student['academicRecord'] as List)}',
-                                                      style: TextStyle(
-                                                        fontSize: 13, 
-                                                        fontWeight: FontWeight.w500,
-                                                        color: Colors.orange.shade700
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              TextButton.icon(
-                                                icon: Icon(Icons.visibility, size: 16, color: gradientColors[0]),
-                                                label: Text(
-                                                  'View Profile',
-                                                  style: TextStyle(color: gradientColors[0], fontSize: 13),
-                                                ),
-                                                onPressed: () => _showStudentDetails(student),
-                                                style: ButtonStyle(
-                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  visualDensity: VisualDensity.compact,
-                                                  padding: MaterialStateProperty.all(
-                                                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
-                                                  ),
-                                                ),
-                                              ),
-                                              PopupMenuButton(
-                                                icon: Icon(
-                                                  Icons.more_vert,
-                                                  color: Colors.grey.shade600,
-                                                  size: 20,
-                                                ),
-                                                padding: EdgeInsets.zero,
-                                                position: PopupMenuPosition.under,
-                                                itemBuilder: (context) => [
-                                                  const PopupMenuItem(
-                                                    value: 'edit',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(Icons.edit, color: Colors.blue, size: 18),
-                                                        SizedBox(width: 8),
-                                                        Text('Edit', style: TextStyle(fontSize: 14)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const PopupMenuItem(
-                                                    value: 'academic',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(Icons.book, color: Colors.green, size: 18),
-                                                        SizedBox(width: 8),
-                                                        Text('Academic Record', style: TextStyle(fontSize: 14)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const PopupMenuItem(
-                                                    value: 'message',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(Icons.message, color: Colors.orange, size: 18),
-                                                        SizedBox(width: 8),
-                                                        Text('Message Parent', style: TextStyle(fontSize: 14)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const PopupMenuItem(
-                                                    value: 'delete',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(Icons.delete, color: Colors.red, size: 18),
-                                                        SizedBox(width: 8),
-                                                        Text('Remove Student', style: TextStyle(fontSize: 14)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                                onSelected: (value) {
-                                                  _handleMenuAction(value, student);
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ],
+                                      child: Text(
+                                        '${_filteredStudents.length}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            );
-                          },
+                              const Spacer(),
+                              OutlinedButton.icon(
+                                icon: Icon(Icons.filter_list, color: _accentColor),
+                                label: Text(
+                                  'Filter', 
+                                  style: TextStyle(color: _accentColor)
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: _accentColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                onPressed: _showFilterOptions,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(30),
+                            topRight: Radius.circular(30),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.shade200,
+                              blurRadius: 8,
+                              offset: const Offset(0, -4),
+                            ),
+                          ],
                         ),
-            ),
-          ),
-        ],
-      ),
+                        child: _students.isEmpty
+                            ? _buildEmptyView()
+                            : _filteredStudents.isEmpty
+                                ? _buildNoMatchView()
+                                : ListView.builder(
+                                    padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
+                                    itemCount: _filteredStudents.length,
+                                    itemBuilder: (context, index) {
+                                      final student = _filteredStudents[index];
+                                      // Create gradient colors based on index
+                                      final List<Color> gradientColors;
+                                      switch (index % 4) {
+                                        case 0:
+                                          gradientColors = [
+                                            const Color(0xFF90CAF9),
+                                            const Color(0xFFBBDEFB),
+                                          ];
+                                          break;
+                                        case 1:
+                                          gradientColors = [
+                                            const Color(0xFF80CBC4),
+                                            const Color(0xFFB2DFDB),
+                                          ];
+                                          break;
+                                        case 2:
+                                          gradientColors = [
+                                            const Color(0xFFFFD54F),
+                                            const Color(0xFFFFE082),
+                                          ];
+                                          break;
+                                        case 3:
+                                          gradientColors = [
+                                            const Color(0xFFCE93D8),
+                                            const Color(0xFFE1BEE7),
+                                          ];
+                                          break;
+                                        default:
+                                          gradientColors = [
+                                            const Color(0xFF90CAF9),
+                                            const Color(0xFFBBDEFB),
+                                          ];
+                                      }
+
+                                      return Card(
+                                        elevation: 3,
+                                        shadowColor: gradientColors[0].withOpacity(0.3),
+                                        margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(18),
+                                        ),
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(18),
+                                          onTap: () => _showStudentDetails(student),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Header section with gradient
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: gradientColors,
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                  ),
+                                                  borderRadius: const BorderRadius.only(
+                                                    topLeft: Radius.circular(18),
+                                                    topRight: Radius.circular(18),
+                                                  ),
+                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      padding: const EdgeInsets.all(12),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        shape: BoxShape.circle,
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: gradientColors[0].withOpacity(0.3),
+                                                            blurRadius: 8,
+                                                            offset: const Offset(0, 2),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: Text(
+                                                        student['name'].toString().substring(0, 1),
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 18,
+                                                          color: gradientColors[0],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 16),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            student['name'] as String,
+                                                            style: const TextStyle(
+                                                              fontWeight: FontWeight.bold,
+                                                              fontSize: 18,
+                                                              color: Colors.white,
+                                                              shadows: [
+                                                                Shadow(
+                                                                  offset: Offset(0, 1),
+                                                                  blurRadius: 2,
+                                                                  color: Color(0x50000000),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 4),
+                                                          Text(
+                                                            'ID: ${student['id']} | Grade: ${student['grade']}',
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 14,
+                                                              shadows: [
+                                                                Shadow(
+                                                                  offset: Offset(0, 1),
+                                                                  blurRadius: 2,
+                                                                  color: Color(0x50000000),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              
+                                              // Footer with essential info and actions
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade50,
+                                                  borderRadius: const BorderRadius.only(
+                                                    bottomLeft: Radius.circular(18),
+                                                    bottomRight: Radius.circular(18),
+                                                  ),
+                                                  border: Border(
+                                                    top: BorderSide(
+                                                      color: gradientColors[0].withOpacity(0.2),
+                                                      width: 1,
+                                                    ),
+                                                  ),
+                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Icon(Icons.school, size: 16, color: gradientColors[0]),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          student['class'] as String,
+                                                          style: TextStyle(
+                                                            fontWeight: FontWeight.w500,
+                                                            color: Colors.grey.shade800
+                                                          ),
+                                                        ),
+                                                        const Spacer(),
+                                                        Row(
+                                                          children: [
+                                                            Icon(Icons.access_time, size: 16, color: Colors.blue.shade700),
+                                                            const SizedBox(width: 4),
+                                                            Text(
+                                                              student['attendance'] as String,
+                                                              style: TextStyle(
+                                                                fontSize: 13,
+                                                                fontWeight: FontWeight.w500,
+                                                                color: Colors.blue.shade700
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Row(
+                                                            children: [
+                                                              Icon(Icons.badge, size: 16, color: Colors.orange.shade700),
+                                                              const SizedBox(width: 4),
+                                                              Text(
+                                                                'Avg: ${_getAverageGrade(student['academicRecord'] as List)}',
+                                                                style: TextStyle(
+                                                                  fontSize: 13, 
+                                                                  fontWeight: FontWeight.w500,
+                                                                  color: Colors.orange.shade700
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        TextButton.icon(
+                                                          icon: Icon(Icons.visibility, size: 16, color: gradientColors[0]),
+                                                          label: Text(
+                                                            'View Profile',
+                                                            style: TextStyle(color: gradientColors[0], fontSize: 13),
+                                                          ),
+                                                          onPressed: () => _showStudentDetails(student),
+                                                          style: ButtonStyle(
+                                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                            visualDensity: VisualDensity.compact,
+                                                            padding: MaterialStateProperty.all(
+                                                              const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        PopupMenuButton(
+                                                          icon: Icon(
+                                                            Icons.more_vert,
+                                                            color: Colors.grey.shade600,
+                                                            size: 20,
+                                                          ),
+                                                          padding: EdgeInsets.zero,
+                                                          position: PopupMenuPosition.under,
+                                                          itemBuilder: (context) => [
+                                                            const PopupMenuItem(
+                                                              value: 'edit',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(Icons.edit, color: Colors.blue, size: 18),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Edit', style: TextStyle(fontSize: 14)),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            const PopupMenuItem(
+                                                              value: 'academic',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(Icons.book, color: Colors.green, size: 18),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Academic Record', style: TextStyle(fontSize: 14)),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            const PopupMenuItem(
+                                                              value: 'message',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(Icons.message, color: Colors.orange, size: 18),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Message Parent', style: TextStyle(fontSize: 14)),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            const PopupMenuItem(
+                                                              value: 'delete',
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(Icons.delete, color: Colors.red, size: 18),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Remove Student', style: TextStyle(fontSize: 14)),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ],
+                                                          onSelected: (value) {
+                                                            _handleMenuAction(value, student);
+                                                          },
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        );
+                                      },
+                                    ),
+                      ),
+                    ),
+                  ],
+                ),
       backgroundColor: Colors.white,
       floatingActionButton: Container(
         decoration: BoxDecoration(
@@ -648,6 +781,143 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           icon: const Icon(Icons.person_add, color: Colors.white),
           label: const Text("Enroll New Student", style: TextStyle(color: Colors.white)),
         ),
+      ),
+    );
+  }
+  
+  // Build error view for API failures
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 80,
+            color: Colors.red.shade300,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load students',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadStudents,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Build empty view when no students are available
+  Widget _buildEmptyView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_outline,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No Students Found',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Get started by enrolling your first student',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _showAddStudentDialog,
+            icon: const Icon(Icons.add),
+            label: const Text('Enroll New Student'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Build view for when no students match filter criteria
+  Widget _buildNoMatchView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.filter_list_off,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No students match your filter',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try changing your search criteria',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.clear),
+            label: const Text('Clear Filters'),
+            onPressed: () {
+              setState(() {
+                _searchController.clear();
+                _selectedFilter = 'All';
+                _filteredStudents = List.from(_students);
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -843,6 +1113,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   void _showStudentDetails(Map<String, dynamic> student) {
+    // Get MongoDB ID for API request
+    final String studentId = student['_id'] as String;
+    
+    // Show bottom sheet with FutureBuilder
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -857,215 +1131,459 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _studentService.getStudentById(studentId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingStudentDetails();
+              } else if (snapshot.hasError) {
+                return _buildErrorStudentDetails(
+                  snapshot.error.toString(),
+                  () {
+                    // Close current sheet and reopen to retry
+                    Navigator.pop(context);
+                    _showStudentDetails(student);
+                  },
+                );
+              } else if (snapshot.hasData) {
+                return _buildStudentDetailsContent(snapshot.data!, scrollController);
+              } else {
+                return _buildErrorStudentDetails(
+                  'No data available',
+                  () {
+                    Navigator.pop(context);
+                    _showStudentDetails(student);
+                  },
+                );
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+  
+  // Loading view for student details
+  Widget _buildLoadingStudentDetails() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: _accentColor),
+          const SizedBox(height: 24),
+          Text(
+            'Loading student details...',
+            style: TextStyle(
+              color: _accentColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Error view for student details
+  Widget _buildErrorStudentDetails(String errorMessage, VoidCallback retryFunction) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.error_outline,
+          size: 80,
+          color: Colors.red.shade300,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Failed to load student details',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey.shade800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+          child: Text(
+            errorMessage,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(
+          onPressed: retryFunction,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Try Again'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _primaryColor,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // Content view for student details
+  Widget _buildStudentDetailsContent(Map<String, dynamic> student, ScrollController scrollController) {
+    // Extract data from the student details API response
+    final studentName = student['name']?.toString() ?? 'Unknown';
+    final studentId = student['studentId']?.toString() ?? 'Unknown';
+    final mongoId = student['_id']?.toString() ?? 'Unknown';
+    
+    // Process class info - handle both Map and String cases
+    String className = "Unknown Class";
+    String grade = "Unknown";
+    String section = "";
+    if (student['classId'] is Map) {
+      final classData = student['classId'] as Map<String, dynamic>;
+      grade = classData['grade']?.toString() ?? 'Unknown';
+      section = classData['section']?.toString() ?? '';
+      className = classData['name']?.toString() ?? 'Class $grade$section';
+    } else if (student['classId'] is String) {
+      // Handle case where classId is just a string ID
+      className = "Class ID: ${student['classId']}";
+    }
+    
+    // Format date of birth
+    String dob = "Unknown";
+    if (student['dob'] != null) {
+      try {
+        final DateTime dobDate = DateTime.parse(student['dob'].toString());
+        dob = '${dobDate.year}-${dobDate.month.toString().padLeft(2, '0')}-${dobDate.day.toString().padLeft(2, '0')}';
+      } catch (e) {
+        dob = student['dob'].toString();
+      }
+    }
+    
+    // Extract parent info safely
+    final List<dynamic> parents = student['parents'] ?? [];
+    String parentName = "Unknown";
+    String parentContact = "Unknown";
+    String parentEmail = "Unknown";
+    
+    if (parents.isNotEmpty && parents[0] is Map) {
+      final parent = parents[0] as Map<String, dynamic>;
+      parentName = parent['name']?.toString() ?? 'Unknown';
+      parentContact = parent['phone']?.toString() ?? 'Unknown';
+      parentEmail = parent['email']?.toString() ?? 'Unknown';
+    }
+    
+    // Extract academic report details safely
+    int attendancePercentage = 0;
+    List<dynamic> grades = [];
+    
+    if (student['academicReport'] is Map) {
+      final academicReport = student['academicReport'] as Map<String, dynamic>;
+      attendancePercentage = (academicReport['attendancePct'] as num?)?.toInt() ?? 0;
+      grades = academicReport['grades'] ?? [];
+    }
+    
+    // Extract other student info safely
+    final gender = student['gender']?.toString() ?? 'Unknown';
+    final address = student['address']?.toString() ?? 'Unknown';
+    final phone = student['phone']?.toString() ?? 'Unknown';
+    final email = student['email']?.toString() ?? 'Unknown';
+    final feePaid = student['feePaid'] == true;
+    final schoolId = student['schoolId']?.toString() ?? 'Unknown';
+    
+    return Column(
+      children: [
+        // Colorful header
+        Container(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_accentColor, _accentColor.withOpacity(0.7)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: _accentColor.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
           child: Column(
             children: [
-              // Colorful header
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [_accentColor, _accentColor.withOpacity(0.7)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _accentColor.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.white,
+                    child: Text(
+                      studentName.isNotEmpty ? studentName.substring(0, 1).toUpperCase() : "?",
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: _accentColor,
+                      ),
                     ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor: Colors.white,
-                          child: Text(
-                            student['name'].toString().substring(0, 1),
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: _accentColor,
-                            ),
+                        Text(
+                          studentName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                            color: Colors.white,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                student['name'] as String,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 24,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                'Grade ${student['grade']} | ${student['class']}',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
+                        Text(
+                          'Grade $grade$section | $className',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 16,
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              
-              // Content area with details
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Basic information
-                      _buildInfoSection(
-                        'Basic Information',
-                        Icons.person,
-                        [
-                          _buildDetailRow('Student ID', student['id'] as String),
-                          _buildDetailRow('Date of Birth', student['dob'] as String),
-                          _buildDetailRow('Gender', student['gender'] as String),
-                        ],
-                        _primaryColor,
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Contact information
-                      _buildInfoSection(
-                        'Contact Information',
-                        Icons.contact_mail,
-                        [
-                          _buildDetailRow('Address', student['address'] as String),
-                          _buildDetailRow('Contact', student['contact'] as String),
-                          _buildDetailRow('Email', student['email'] as String),
-                        ],
-                        _tertiaryColor,
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Parent information
-                      _buildInfoSection(
-                        'Parent Information',
-                        Icons.family_restroom,
-                        [
-                          _buildDetailRow('Parent Name', student['parent'] as String),
-                          _buildDetailRow('Parent Contact', student['parentContact'] as String),
-                        ],
-                        Colors.orange,
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Academic information
-                      _buildInfoSection(
-                        'Academic Information',
-                        Icons.school,
-                        [
-                          _buildDetailRow('Average Grade', _getAverageGrade(student['academicRecord'] as List)),
-                          _buildDetailRow('Attendance', student['attendance'] as String),
-                          Container(
-                            margin: const EdgeInsets.only(top: 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Subject Grades',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                ..._buildGradesList(student['academicRecord'] as List),
-                              ],
-                            ),
-                          ),
-                        ],
-                        _accentColor,
-                      ),
-                      
-                      const SizedBox(height: 32),
-                      
-                      // Action buttons
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.edit),
-                            label: const Text('Edit Profile'),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showEditStudentDialog(student);
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _primaryColor,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.book),
-                            label: const Text('Academic Record'),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showAcademicRecordDialog(student);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: _accentColor,
-                              side: BorderSide(color: _accentColor),
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.assessment),
-                            label: const Text('Report'),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _generateStudentReport(student);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: _tertiaryColor,
-                              side: BorderSide(color: _tertiaryColor),
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'ID: $studentId',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ],
           ),
         ),
-      ),
-      );
+        
+        // Content area with details
+        Expanded(
+          child: SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Basic information
+                _buildInfoSection(
+                  'Basic Information',
+                  Icons.person,
+                  [
+                    _buildDetailRow('Student ID', studentId),
+                    _buildDetailRow('Date of Birth', dob),
+                    _buildDetailRow('Gender', gender),
+                    _buildDetailRow('Fee Status', feePaid ? 'Paid' : 'Not Paid'),
+                    _buildDetailRow('School ID', schoolId),
+                  ],
+                  _primaryColor,
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Contact information
+                _buildInfoSection(
+                  'Contact Information',
+                  Icons.contact_mail,
+                  [
+                    _buildDetailRow('Address', address),
+                    _buildDetailRow('Contact', phone),
+                    _buildDetailRow('Email', email),
+                  ],
+                  _tertiaryColor,
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Parent information
+                _buildInfoSection(
+                  'Parent Information',
+                  Icons.family_restroom,
+                  [
+                    _buildDetailRow('Parent Name', parentName),
+                    _buildDetailRow('Parent Contact', parentContact),
+                    _buildDetailRow('Parent Email', parentEmail),
+                  ],
+                  Colors.orange,
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Academic information
+                _buildInfoSection(
+                  'Academic Information',
+                  Icons.school,
+                  [
+                    _buildDetailRow('Class', className),
+                    _buildDetailRow('Attendance', '$attendancePercentage%'),
+                    Container(
+                      margin: const EdgeInsets.only(top: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Subject Grades',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          grades.isEmpty 
+                          ? Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                'No grades recorded yet',
+                                style: TextStyle(
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              children: grades.map((grade) {
+                                final subject = grade['subject']?.toString() ?? 'Unknown Subject';
+                                final gradeValue = grade['grade']?.toString() ?? 'N/A';
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          subject,
+                                          style: const TextStyle(fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _getGradeColor(gradeValue),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          gradeValue,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  _accentColor,
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Registration info
+                _buildInfoSection(
+                  'Registration Details',
+                  Icons.event_note,
+                  [
+                    _buildDetailRow('Created At', _formatAPIDate(student['createdAt'])),
+                    _buildDetailRow('Last Updated', _formatAPIDate(student['updatedAt'])),
+                    _buildDetailRow('MongoDB ID', mongoId),
+                  ],
+                  Colors.grey.shade700,
+                ),
+                
+                const SizedBox(height: 32),
+                
+                // Action buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Edit Profile'),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showEditStudentDialog(student);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.book),
+                      label: const Text('Academic Record'),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showAcademicRecordDialog(student);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _accentColor,
+                        side: BorderSide(color: _accentColor),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.assessment),
+                      label: const Text('Report'),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _generateStudentReport(student);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _tertiaryColor,
+                        side: BorderSide(color: _tertiaryColor),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
   
+  // Helper to format API dates
+  String _formatAPIDate(dynamic dateStr) {
+    if (dateStr == null) return 'Unknown';
+    try {
+      final DateTime date = DateTime.parse(dateStr.toString());
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateStr.toString();
+    }
+  }
+
   Widget _buildInfoSection(String title, IconData icon, List<Widget> children, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1170,196 +1688,659 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   void _showAddStudentDialog() {
+    // Use cached classes data instead of refreshing
+    print('🏫 Opening student enrollment dialog - using cached class data');
+    
+    // Student info controllers
     final nameController = TextEditingController();
-    final idController = TextEditingController(text: 'S00${_students.length + 1}');
-    final gradeController = TextEditingController();
-    final classController = TextEditingController();
+    final idController = TextEditingController(text: 'ST${(100000 + _students.length).toString().substring(1)}');
     final dobController = TextEditingController();
     final addressController = TextEditingController();
-    final contactController = TextEditingController();
-    final parentController = TextEditingController();
-    final parentContactController = TextEditingController();
+    final phoneController = TextEditingController();
     final emailController = TextEditingController();
     
+    // Parent controllers - Support for up to 2 parents
+    final parent1NameController = TextEditingController();
+    final parent1PhoneController = TextEditingController();
+    final parent1EmailController = TextEditingController();
+    
+    final parent2NameController = TextEditingController();
+    final parent2PhoneController = TextEditingController();
+    final parent2EmailController = TextEditingController();
+    
+    // Form state variables
     String selectedGender = 'Male';
-
+    bool feePaid = false;
+    bool includeSecondParent = false;
+    
+    // Selected class ID - use cached data if available
+    String? selectedClassId = _availableClasses.isNotEmpty ? _availableClasses[0]['id'] : null;
+    
+    // Local state variables to manage the dialog
+    bool isSubmitting = false;
+    bool isRefreshingClasses = false;
+    
+    // If classes aren't preloaded yet, refresh them in background
+    if (!_classesPreloaded) {
+      print('🏫 Classes not preloaded, starting background refresh');
+      Future.microtask(() {
+        _loadAvailableClasses(forceRefresh: true).then((_) {
+          print('🏫 Background class refresh complete');
+        });
+      });
+    }
+    
+    // Show dialog with error handling and API integration
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Enroll New Student'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    hintText: 'Enter student\'s full name',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: idController,
-                  decoration: const InputDecoration(
-                    labelText: 'Student ID',
-                    hintText: 'Enter student ID',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: gradeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Grade',
-                          hintText: 'e.g., 10',
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.person_add, color: _primaryColor),
+              const SizedBox(width: 8),
+              const Text('Enroll New Student'),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Student Basic Information section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextField(
-                        controller: classController,
-                        decoration: const InputDecoration(
-                          labelText: 'Class',
-                          hintText: 'e.g., 10A',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Student Information',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Full Name *',
+                            hintText: 'Enter student\'s full name',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: idController,
+                          decoration: const InputDecoration(
+                            labelText: 'Student ID *',
+                            hintText: 'Enter student ID',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: emailController,
+                          decoration: const InputDecoration(
+                            labelText: 'Email *',
+                            hintText: 'Enter student email for login',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Class selection dropdown (optimized loading)
+                        Builder(
+                          builder: (context) {
+                            // If no classes are loaded yet, show loading or error
+                            if (_availableClasses.isEmpty) {
+                              return Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: isRefreshingClasses ? Colors.blue.shade50 : Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isRefreshingClasses ? Colors.blue.shade200 : Colors.red.shade200
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    isRefreshingClasses 
+                                        ? SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.blue.shade700,
+                                            ),
+                                          )
+                                        : Icon(Icons.error_outline, color: Colors.red.shade700),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        isRefreshingClasses 
+                                            ? 'Loading available classes...'
+                                            : 'No classes available. Please create classes first.',
+                                        style: TextStyle(
+                                          color: isRefreshingClasses ? Colors.blue.shade700 : Colors.red.shade700
+                                        ),
+                                      ),
+                                    ),
+                                    if (!isRefreshingClasses) IconButton(
+                                      icon: Icon(Icons.refresh, color: Colors.red.shade700),
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          isRefreshingClasses = true;
+                                        });
+                                        
+                                        _loadAvailableClasses(forceRefresh: true).then((_) {
+                                          if (mounted) {
+                                            setDialogState(() {
+                                              isRefreshingClasses = false;
+                                              selectedClassId = _availableClasses.isNotEmpty 
+                                                  ? _availableClasses[0]['id'] : null;
+                                            });
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+
+                            // Make sure we have a valid selection
+                            if (selectedClassId == null || 
+                                !_availableClasses.any((c) => c['id'] == selectedClassId)) {
+                              selectedClassId = _availableClasses[0]['id'];
+                            }
+                              
+                            return DropdownButtonFormField<String>(
+                              value: selectedClassId,
+                              decoration: const InputDecoration(
+                                labelText: 'Class *',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: _availableClasses.map((classItem) {
+                                return DropdownMenuItem<String>(
+                                  value: classItem['id'],
+                                  child: Text('${classItem['name']} (Grade ${classItem['grade']}${classItem['section']})'),
+                                );
+                              }).toList(),
+                              onChanged: (String? value) {
+                                setDialogState(() {
+                                  selectedClassId = value;
+                                });
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: dobController,
+                          decoration: InputDecoration(
+                            labelText: 'Date of Birth *',
+                            hintText: 'YYYY-MM-DD',
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.calendar_today),
+                              onPressed: () async {
+                                final DateTime? picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now().subtract(const Duration(days: 365 * 10)),
+                                  firstDate: DateTime.now().subtract(const Duration(days: 365 * 18)),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    dobController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text('Gender: *', style: TextStyle(fontSize: 16)),
+                        Row(
+                          children: [
+                            Radio(
+                              value: 'Male',
+                              groupValue: selectedGender,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  selectedGender = value.toString();
+                                });
+                              },
+                            ),
+                            const Text('Male'),
+                            const SizedBox(width: 12),
+                            Radio(
+                              value: 'Female',
+                              groupValue: selectedGender,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  selectedGender = value.toString();
+                                });
+                              },
+                            ),
+                            const Text('Female'),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: dobController,
-                  decoration: const InputDecoration(
-                    labelText: 'Date of Birth',
-                    hintText: 'YYYY-MM-DD',
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Text('Gender: '),
-                    Radio(
-                      value: 'Male',
-                      groupValue: selectedGender,
-                      onChanged: (value) {
-                        setState(() {
-                          selectedGender = value.toString();
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Contact Information section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Contact Information',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: addressController,
+                          decoration: const InputDecoration(
+                            labelText: 'Address *',
+                            hintText: 'Enter complete address',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: phoneController,
+                          decoration: const InputDecoration(
+                            labelText: 'Contact Number *',
+                            hintText: 'Enter phone number',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.phone,
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Parent Information section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Parent/Guardian Information',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Primary Parent
+                        const Text(
+                          'Primary Parent/Guardian *',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: parent1NameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Parent Name *',
+                            hintText: 'Enter parent\'s full name',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: parent1PhoneController,
+                          decoration: const InputDecoration(
+                            labelText: 'Parent Contact *',
+                            hintText: 'Enter parent\'s phone number',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: parent1EmailController,
+                          decoration: const InputDecoration(
+                            labelText: 'Parent Email *',
+                            hintText: 'Enter parent\'s email for login access',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Option to add second parent
+                        CheckboxListTile(
+                          title: const Text("Add Second Parent/Guardian"),
+                          subtitle: const Text("Optional - for guardians with dual custody"),
+                          value: includeSecondParent,
+                          onChanged: (bool? value) {
+                            setDialogState(() {
+                              includeSecondParent = value ?? false;
+                              if (!includeSecondParent) {
+                                // Clear second parent fields if unchecked
+                                parent2NameController.clear();
+                                parent2PhoneController.clear();
+                                parent2EmailController.clear();
+                              }
+                            });
+                          },
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                        
+                        // Second Parent (conditional)
+                        if (includeSecondParent) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Second Parent/Guardian',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: parent2NameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Second Parent Name',
+                              hintText: 'Enter second parent\'s full name',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: parent2PhoneController,
+                            decoration: const InputDecoration(
+                              labelText: 'Second Parent Contact',
+                              hintText: 'Enter second parent\'s phone number',
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType: TextInputType.phone,
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: parent2EmailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Second Parent Email',
+                              hintText: 'Enter second parent\'s email',
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Fee Payment section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: CheckboxListTile(
+                      title: const Text("Fee Paid"),
+                      subtitle: const Text("Mark if the initial fee is already paid"),
+                      value: feePaid,
+                      onChanged: (bool? value) {
+                        setDialogState(() {
+                          feePaid = value ?? false;
                         });
                       },
+                      controlAffinity: ListTileControlAffinity.leading,
                     ),
-                    const Text('Male'),
-                    Radio(
-                      value: 'Female',
-                      groupValue: selectedGender,
-                      onChanged: (value) {
-                        setState(() {
-                          selectedGender = value.toString();
-                        });
-                      },
+                  ),
+                  
+                  const SizedBox(height: 8),
+                  const Text(
+                    '* Required fields',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
                     ),
-                    const Text('Female'),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: addressController,
-                  decoration: const InputDecoration(
-                    labelText: 'Address',
+                    child: const Text(
+                      'Note: Student and parent login credentials will use the school secret key as password. They can change it later.',
+                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: contactController,
-                  decoration: const InputDecoration(
-                    labelText: 'Contact Number',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Parent Information',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: parentController,
-                  decoration: const InputDecoration(
-                    labelText: 'Parent Name',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: parentContactController,
-                  decoration: const InputDecoration(
-                    labelText: 'Parent Contact',
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey,
+              ),
               child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                if (nameController.text.isEmpty || 
-                    gradeController.text.isEmpty || 
-                    classController.text.isEmpty ||
-                    parentController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please fill all required fields')),
-                  );
-                  return;
-                }
+            _availableClasses.isEmpty 
+            ? OutlinedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reload Classes'),
+                onPressed: () async {
+                  setDialogState(() {
+                    isRefreshingClasses = true;
+                  });
+                  
+                  await _loadAvailableClasses(forceRefresh: true);
+                  
+                  setDialogState(() {
+                    isRefreshingClasses = false;
+                    selectedClassId = _availableClasses.isNotEmpty ? _availableClasses[0]['id'] : null;
+                  });
+                },
+              )
+            : ElevatedButton.icon(
+                icon: isSubmitting 
+                    ? SizedBox(
+                        width: 20, 
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.school),
+                label: Text(isSubmitting ? 'Enrolling...' : 'Enroll Student'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                onPressed: isSubmitting ? null : () async {
+                  // Check if there are available classes
+                  if (_availableClasses.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cannot enroll student: No classes available'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
 
-                final newStudent = {
-                  'id': idController.text,
-                  'name': nameController.text,
-                  'grade': gradeController.text,
-                  'class': classController.text,
-                  'gender': selectedGender,
-                  'dob': dobController.text,
-                  'address': addressController.text,
-                  'contact': contactController.text,
-                  'parent': parentController.text,
-                  'parentContact': parentContactController.text,
-                  'email': emailController.text,
-                  'attendance': '100%',
-                  'academicRecord': [],
-                };
+                  // Validate required fields
+                  if (nameController.text.isEmpty || 
+                      idController.text.isEmpty || 
+                      emailController.text.isEmpty ||
+                      selectedClassId == null ||
+                      dobController.text.isEmpty ||
+                      addressController.text.isEmpty ||
+                      phoneController.text.isEmpty ||
+                      parent1NameController.text.isEmpty ||
+                      parent1PhoneController.text.isEmpty ||
+                      parent1EmailController.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please fill all required fields'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
 
-                setState(() {
-                  _students.add(newStudent);
-                  _filteredStudents = List.from(_students);
-                });
+                  // Validate second parent if included
+                  if (includeSecondParent && 
+                      (parent2NameController.text.isEmpty || 
+                       parent2PhoneController.text.isEmpty || 
+                       parent2EmailController.text.isEmpty)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please fill all second parent fields or uncheck the option'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
 
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Student enrolled successfully')),
-                );
-              },
-              child: const Text('Enroll'),
-            ),
+                  try {
+                    // Show loading indicator inside dialog
+                    setDialogState(() {
+                      isSubmitting = true;
+                    });
+                    
+                    // Show progress message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Text('Creating student and parent accounts...'),
+                          ],
+                        ),
+                        backgroundColor: _primaryColor,
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                    
+                    // Create parent data array with the structure expected by API
+                    final List<Map<String, dynamic>> parentData = [
+                      {
+                        'name': parent1NameController.text,
+                        'email': parent1EmailController.text,
+                        'phone': parent1PhoneController.text,
+                      }
+                    ];
+                    
+                    // Add second parent if included
+                    if (includeSecondParent && parent2NameController.text.isNotEmpty) {
+                      parentData.add({
+                        'name': parent2NameController.text,
+                        'email': parent2EmailController.text,
+                        'phone': parent2PhoneController.text,
+                      });
+                    }
+                    
+                    // Debug output
+                    print('Creating student with classId: $selectedClassId');
+                    print('Parent data: $parentData');
+                    
+                    final result = await _studentService.createStudent(
+                      studentId: idController.text,
+                      name: nameController.text,
+                      classId: selectedClassId!,
+                      dob: dobController.text,
+                      gender: selectedGender,
+                      address: addressController.text,
+                      phone: phoneController.text,
+                      email: emailController.text,
+                      feePaid: feePaid,
+                      parents: parentData,
+                    );
+                    
+                    print('✅ Student created successfully: ${result['_id']}');
+                    
+                    // Only close the dialog after successful API call
+                    Navigator.pop(context);
+                    
+                    // Now refresh the student list
+                    await _refreshStudents();
+                    
+                    // Hide progress message and show success message
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Student and parent accounts created successfully! They can login with their email and the school secret key.'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 6),
+                      ),
+                    );
+                  } catch (e) {
+                    // Stop loading but keep dialog open
+                    setDialogState(() {
+                      isSubmitting = false;
+                    });
+                    
+                    print('❌ Error creating student: $e');
+                    
+                    // Hide progress message
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    
+                    String errorMessage = e.toString();
+                    if (errorMessage.contains('School secret key not found')) {
+                      errorMessage = 'School secret key not found. Please contact administrator.';
+                    } else if (errorMessage.contains('Email already exists')) {
+                      errorMessage = 'A user with this email already exists.';
+                    }
+                    
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to enroll student: $errorMessage'),
+                        backgroundColor: Colors.red,
+                        action: SnackBarAction(
+                          label: 'Retry',
+                          onPressed: () {
+                            // Retry by calling the same function again
+                          },
+                          textColor: Colors.white,
+                        ),
+                        duration: const Duration(seconds: 8),
+                      ),
+                    );
+                  }
+                },
+              ),
           ],
         ),
       ),
-    );
+      );
   }
 
   void _showEditStudentDialog(Map<String, dynamic> student) {
@@ -1369,8 +2350,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     final dobController = TextEditingController(text: student['dob'] as String);
     final addressController = TextEditingController(text: student['address'] as String);
     final contactController = TextEditingController(text: student['contact'] as String);
-    final parentController = TextEditingController(text: student['parent'] as String);
-    final parentContactController = TextEditingController(text: student['parentContact'] as String);
     final emailController = TextEditingController(text: student['email'] as String);
     
     String selectedGender = student['gender'] as String;
@@ -1454,21 +2433,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   decoration: const InputDecoration(labelText: 'Email'),
                   keyboardType: TextInputType.emailAddress,
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Parent Information',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: parentController,
-                  decoration: const InputDecoration(labelText: 'Parent Name'),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: parentContactController,
-                  decoration: const InputDecoration(labelText: 'Parent Contact'),
-                ),
               ],
             ),
           ),
@@ -1478,43 +2442,54 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
-                if (nameController.text.isEmpty || gradeController.text.isEmpty || classController.text.isEmpty) {
+              onPressed: () async {
+                if (nameController.text.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please fill all required fields')),
                   );
                   return;
                 }
 
-                final index = _students.indexOf(student);
-                if (index != -1) {
-                  setState(() {
-                    _students[index]['name'] = nameController.text;
-                    _students[index]['grade'] = gradeController.text;
-                    _students[index]['class'] = classController.text;
-                    _students[index]['gender'] = selectedGender;
-                    _students[index]['dob'] = dobController.text;
-                    _students[index]['address'] = addressController.text;
-                    _students[index]['contact'] = contactController.text;
-                    _students[index]['parent'] = parentController.text;
-                    _students[index]['parentContact'] = parentContactController.text;
-                    _students[index]['email'] = emailController.text;
-
-                    _filteredStudents = List.from(_students);
-                  });
+                try {
+                  Navigator.pop(context);
+                  setState(() => _isLoading = true);
+                  
+                  final studentIdToUpdate = student['_id'].toString(); // Use MongoDB _id
+                  
+                  await _studentService.updateStudent(
+                    studentId: studentIdToUpdate,
+                    name: nameController.text,
+                    gender: selectedGender,
+                    dob: dobController.text,
+                    address: addressController.text,
+                    phone: contactController.text,
+                    email: emailController.text,
+                  );
+                  
+                  await _refreshStudents();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Student updated successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  setState(() => _isLoading = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to update student: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
                 }
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Student updated successfully')),
-                );
               },
               child: const Text('Save Changes'),
             ),
           ],
         ),
       ),
-    );
+      );
   }
 
   void _showAcademicRecordDialog(Map<String, dynamic> student) {
@@ -1633,7 +2608,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           ],
         ),
       ),
-    );
+      );
   }
 
   void _generateStudentReport(Map<String, dynamic> student) {
@@ -1695,11 +2670,11 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
-                      ),
+                                           ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                               const SizedBox(height: 8),
                 Text('Attendance: ${student['attendance']}'),
                 const SizedBox(height: 16),
                 const Text('Teacher Comments:', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1798,15 +2773,46 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              setState(() {
-                _students.remove(student);
-                _filteredStudents = List.from(_students);
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Student removed successfully')),
-              );
+            onPressed: () async {
+              try {
+                final studentIdToDelete = student['_id'].toString(); // Use MongoDB _id
+                
+                // Show loading state but don't close dialog yet
+                setState(() {
+                  // Local loading indicator
+                  bool isDeleting = true;
+                });
+                
+                // Perform the deletion
+                await _studentService.deleteStudent(studentIdToDelete);
+                
+                // Only close the dialog after successful deletion
+                Navigator.pop(context);
+                
+                // Update UI
+                setState(() => _isLoading = true);
+                await _refreshStudents();
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Student removed successfully'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                // Keep dialog open, reset loading state
+                setState(() {
+                  // Reset local loading indicator
+                  bool isDeleting = false;
+                });
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to remove student: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: const Text('Remove'),
           ),

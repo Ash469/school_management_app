@@ -1,25 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:table_calendar/table_calendar.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
+import '../../services/schedule_service.dart';
 
 class StudentScheduleScreen extends StatefulWidget {
   final User? user;
 
-  const StudentScheduleScreen({Key? key, this.user}) : super(key: key);
+  const StudentScheduleScreen({super.key, this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _StudentScheduleScreenState createState() => _StudentScheduleScreenState();
 }
 
 class _StudentScheduleScreenState extends State<StudentScheduleScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late DateTime _selectedDay;
-  late DateTime _focusedDay;
-  late Map<DateTime, List<dynamic>> _events;
-  late ValueNotifier<List<dynamic>> _selectedEvents;
-  CalendarFormat _calendarFormat = CalendarFormat.month;
+  
+  // Add these for real schedule data
+  late ScheduleService _scheduleService;
+  Map<String, dynamic>? _realScheduleData;
+  bool _hasRealData = false;
+  bool _isLoading = true;
 
   // Theme colors
   late Color _primaryColor;
@@ -30,17 +33,17 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _selectedDay = DateTime.now();
-    _focusedDay = DateTime.now();
 
-    // Initialize events
-    _events = {};
-    _initializeEvents();
-    _selectedEvents = ValueNotifier(_getEventsForDay(_selectedDay));
+    // Initialize services
+    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
 
     // Load theme colors
     _loadThemeColors();
+    
+    // Load real schedule data
+    _loadRealScheduleData();
   }
 
   void _loadThemeColors() {
@@ -50,48 +53,44 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
     _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
   }
 
-  void _initializeEvents() {
-    // Add some example events
-    final now = DateTime.now();
-    
-    // Add exams
-    _addEvent(now.add(Duration(days: 10)), 'Mid-term Examination', 'Math Exam', Colors.red);
-    _addEvent(now.add(Duration(days: 12)), 'Mid-term Examination', 'Science Exam', Colors.red);
-    _addEvent(now.add(Duration(days: 14)), 'Mid-term Examination', 'History Exam', Colors.red);
-    
-    // Add assignment due dates
-    _addEvent(now.add(Duration(days: 3)), 'Assignment Due', 'Math Assignment', Colors.orange);
-    _addEvent(now.add(Duration(days: 5)), 'Assignment Due', 'Science Lab Report', Colors.orange);
-    
-    // Add school events
-    _addEvent(now.add(Duration(days: 7)), 'School Event', 'Annual Sports Day', Colors.green);
-    _addEvent(now.add(Duration(days: 20)), 'School Event', 'Science Fair', Colors.green);
-    
-    // Add holidays
-    _addEvent(now.add(Duration(days: 15)), 'Holiday', 'National Day', Colors.blue);
-  }
-
-  void _addEvent(DateTime date, String type, String title, Color color) {
-    final dateKey = DateTime(date.year, date.month, date.day);
-    if (_events[dateKey] == null) {
-      _events[dateKey] = [];
-    }
-    _events[dateKey]!.add({
-      'type': type,
-      'title': title,
-      'color': color,
+  Future<void> _loadRealScheduleData() async {
+    setState(() {
+      _isLoading = true;
     });
-  }
-
-  List<dynamic> _getEventsForDay(DateTime day) {
-    final dateKey = DateTime(day.year, day.month, day.day);
-    return _events[dateKey] ?? [];
+    
+    try {
+      if (widget.user != null) {
+        final scheduleData = await _scheduleService.getStudentSchedule(widget.user!.id);
+        
+        if (scheduleData != null && scheduleData.containsKey('success') && scheduleData['success'] == true) {
+          setState(() {
+            // The schedule data is in the 'schedule' key, not 'data'
+            _realScheduleData = scheduleData['schedule'];
+            _hasRealData = _realScheduleData != null;
+            _isLoading = false;
+          });
+          print('📅 Real schedule data loaded successfully');
+          print('📅 Schedule data structure: ${_realScheduleData?.keys.toList()}');
+        } else {
+          setState(() {
+            _hasRealData = false;
+            _isLoading = false;
+          });
+          print('📅 No valid schedule data in response: $scheduleData');
+        }
+      }
+    } catch (e) {
+      print('📅 Failed to load real schedule data: $e');
+      setState(() {
+        _hasRealData = false;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _selectedEvents.dispose();
     super.dispose();
   }
 
@@ -100,8 +99,10 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
     return Theme(
       data: AppTheme.getTheme(AppTheme.defaultTheme),
       child: Scaffold(
+        backgroundColor: Colors.grey[50],
         appBar: AppBar(
-          title: const Text('My Schedule', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('My Schedule', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          elevation: 0,
           flexibleSpace: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -114,19 +115,74 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
           bottom: TabBar(
             controller: _tabController,
             indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             tabs: const [
               Tab(text: 'Daily'),
               Tab(text: 'Weekly'),
-              Tab(text: 'Calendar'),
             ],
           ),
         ),
-        body: TabBarView(
-          controller: _tabController,
+        body: _isLoading 
+          ? _buildLoadingState()
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildDailySchedule(),
+                _buildWeeklySchedule(),
+              ],
+            ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.grey[50]!, Colors.white],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildDailySchedule(),
-            _buildWeeklySchedule(),
-            _buildCalendarView(),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 5,
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Loading your schedule...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -146,54 +202,84 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
 
   Widget _buildDateSelector() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
       decoration: BoxDecoration(
-        color: _primaryColor.withOpacity(0.1),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 2,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios),
-            onPressed: () {
-              setState(() {
-                _selectedDay = _selectedDay.subtract(const Duration(days: 1));
-              });
-            },
-            color: _primaryColor,
+          Container(
+            decoration: BoxDecoration(
+              color: _primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: Icon(Icons.arrow_back_ios, color: _primaryColor),
+              onPressed: () {
+                setState(() {
+                  _selectedDay = _selectedDay.subtract(const Duration(days: 1));
+                });
+              },
+            ),
           ),
           InkWell(
             onTap: () => _selectDate(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [_primaryColor.withOpacity(0.1), _accentColor.withOpacity(0.1)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Column(
                 children: [
                   Text(
                     DateFormat('EEEE').format(_selectedDay),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      color: _primaryColor,
                     ),
                   ),
                   Text(
                     DateFormat('MMMM d, y').format(_selectedDay),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey,
+                      color: Colors.grey[600],
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.arrow_forward_ios),
-            onPressed: () {
-              setState(() {
-                _selectedDay = _selectedDay.add(const Duration(days: 1));
-              });
-            },
-            color: _primaryColor,
+          Container(
+            decoration: BoxDecoration(
+              color: _primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: Icon(Icons.arrow_forward_ios, color: _primaryColor),
+              onPressed: () {
+                setState(() {
+                  _selectedDay = _selectedDay.add(const Duration(days: 1));
+                });
+              },
+            ),
           ),
         ],
       ),
@@ -206,6 +292,19 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
       initialDate: _selectedDay,
       firstDate: DateTime(2023, 1),
       lastDate: DateTime(2025, 12),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: _primaryColor,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null && picked != _selectedDay) {
       setState(() {
@@ -215,239 +314,80 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
   }
 
   Widget _buildScheduleForDay(DateTime day) {
-    // This method would normally fetch the schedule for the specific day
-    // For now, we'll use the example data based on the day of week
-    
-    final weekday = day.weekday;
     List<Map<String, dynamic>> classes = [];
     
-    // Generate schedule based on the day of week
-    switch (weekday) {
-      case DateTime.monday:
-        classes = [
-          {
-            'subject': 'Mathematics',
-            'time': '09:00 - 10:00 AM',
-            'teacher': 'Mr. Johnson',
-            'room': 'Room 101',
-            'color': Colors.blue,
-          },
-          {
-            'subject': 'Physics',
-            'time': '10:15 - 11:15 AM',
-            'teacher': 'Ms. Garcia',
-            'room': 'Lab 3',
-            'color': Colors.green,
-          },
-          {
-            'subject': 'English Literature',
-            'time': '12:00 - 01:00 PM',
-            'teacher': 'Mrs. Williams',
-            'room': 'Room 203',
-            'color': Colors.purple,
-          },
-          {
-            'subject': 'History',
-            'time': '02:00 - 03:00 PM',
-            'teacher': 'Dr. Brown',
-            'room': 'Room 105',
-            'color': Colors.orange,
-          },
-        ];
-        break;
-      case DateTime.tuesday:
-        classes = [
-          {
-            'subject': 'Biology',
-            'time': '09:00 - 10:30 AM',
-            'teacher': 'Dr. Martinez',
-            'room': 'Lab 2',
-            'color': Colors.teal,
-          },
-          {
-            'subject': 'Computer Science',
-            'time': '10:45 - 12:15 PM',
-            'teacher': 'Mr. Davis',
-            'room': 'Computer Lab',
-            'color': Colors.indigo,
-          },
-          {
-            'subject': 'Physical Education',
-            'time': '01:30 - 03:00 PM',
-            'teacher': 'Coach Wilson',
-            'room': 'Gymnasium',
-            'color': Colors.red,
-          },
-        ];
-        break;
-      case DateTime.wednesday:
-        classes = [
-          {
-            'subject': 'Chemistry',
-            'time': '09:00 - 10:30 AM',
-            'teacher': 'Dr. Smith',
-            'room': 'Lab 1',
-            'color': Colors.pink,
-          },
-          {
-            'subject': 'Mathematics',
-            'time': '10:45 - 12:15 PM',
-            'teacher': 'Mr. Johnson',
-            'room': 'Room 101',
-            'color': Colors.blue,
-          },
-          {
-            'subject': 'Art',
-            'time': '01:30 - 03:00 PM',
-            'teacher': 'Ms. Taylor',
-            'room': 'Art Studio',
-            'color': Colors.amber,
-          },
-        ];
-        break;
-      case DateTime.thursday:
-        classes = [
-          {
-            'subject': 'English Literature',
-            'time': '09:00 - 10:30 AM',
-            'teacher': 'Mrs. Williams',
-            'room': 'Room 203',
-            'color': Colors.purple,
-          },
-          {
-            'subject': 'Geography',
-            'time': '10:45 - 12:15 PM',
-            'teacher': 'Mr. Thompson',
-            'room': 'Room 202',
-            'color': Colors.brown,
-          },
-          {
-            'subject': 'Music',
-            'time': '01:30 - 03:00 PM',
-            'teacher': 'Mrs. Clark',
-            'room': 'Music Hall',
-            'color': Colors.deepPurple,
-          },
-        ];
-        break;
-      case DateTime.friday:
-        classes = [
-          {
-            'subject': 'Physics',
-            'time': '09:00 - 10:30 AM',
-            'teacher': 'Ms. Garcia',
-            'room': 'Lab 3',
-            'color': Colors.green,
-          },
-          {
-            'subject': 'History',
-            'time': '10:45 - 12:15 PM',
-            'teacher': 'Dr. Brown',
-            'room': 'Room 105',
-            'color': Colors.orange,
-          },
-          {
-            'subject': 'Language',
-            'time': '01:30 - 03:00 PM',
-            'teacher': 'Mr. Rodriguez',
-            'room': 'Room 301',
-            'color': Colors.cyan,
-          },
-        ];
-        break;
-      case DateTime.saturday:
-      case DateTime.sunday:
-        // No classes on weekends
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.weekend, size: 80, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'No Classes Scheduled',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Enjoy your weekend!',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[500],
-                ),
-              ),
-            ],
-          ),
-        );
+    // Try to get real data first
+    if (_hasRealData && _realScheduleData != null) {
+      classes = _getRealClassesForDay(day);
     }
-
-    if (classes.isEmpty) {
-      return const Center(
-        child: Text('No classes scheduled for this day'),
+  
+    // Weekend check - but only if no classes are scheduled for that day
+    final weekday = day.weekday;
+    if ((weekday == DateTime.saturday || weekday == DateTime.sunday) && classes.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.weekend,
+        title: 'No Classes Scheduled',
+        subtitle: 'Enjoy your weekend!',
       );
     }
 
-    // Get events for this day to show at the top
-    final events = _getEventsForDay(day);
+    if (classes.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.event_busy,
+        title: 'No Classes Today',
+        subtitle: 'You have a free day!',
+      );
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Show events for this day if any
-          if (events.isNotEmpty) ...[
-            const Text(
-              'Today\'s Events',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: events.length,
-                itemBuilder: (context, index) {
-                  final event = events[index];
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: event['color'].withOpacity(0.2),
-                      child: Icon(
-                        _getIconForEventType(event['type']),
-                        color: event['color'],
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(event['title']),
-                    subtitle: Text(event['type']),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-          ],
+          // Show class info if available
+          if (_hasRealData && _realScheduleData != null && _realScheduleData!.containsKey('classId'))
+            _buildClassInfoCard(),
           
-          const Text(
-            'Class Schedule',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Text(
+                'Today\'s Classes',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const Spacer(),
+              if (_hasRealData)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.green[400]!, Colors.green[600]!],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withOpacity(0.3),
+                        spreadRadius: 1,
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    '🟢 Live Data',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           
           ListView.builder(
             shrinkWrap: true,
@@ -461,6 +401,308 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
         ],
       ),
     );
+  }
+
+  Widget _buildEmptyState({required IconData icon, required String title, required String subtitle}) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.grey[50]!, Colors.white],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 5,
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Icon(icon, size: 60, color: Colors.grey[400]),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[500],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClassInfoCard() {
+    // Check if we have classInfo directly
+    if (_realScheduleData!.containsKey('classInfo')) {
+      final classInfo = _realScheduleData!['classInfo'];
+      
+      return Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_primaryColor.withOpacity(0.1), _accentColor.withOpacity(0.1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _primaryColor.withOpacity(0.2), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: _primaryColor.withOpacity(0.1),
+              spreadRadius: 2,
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [_primaryColor, _accentColor],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _primaryColor.withOpacity(0.3),
+                        spreadRadius: 1,
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.school, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Class Information',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: _primaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _infoRow(Icons.class_, 'Class', classInfo['name'] ?? 'N/A'),
+            const SizedBox(height: 12),
+            _infoRow(Icons.grade, 'Grade', 'Grade ${classInfo['grade'] ?? 'N/A'}'),
+            const SizedBox(height: 12),
+            _infoRow(Icons.group, 'Section', 'Section ${classInfo['section'] ?? 'N/A'}'),
+            const SizedBox(height: 12),
+            _infoRow(Icons.calendar_today, 'Academic Year', '${classInfo['year'] ?? 'N/A'}'),
+          ],
+        ),
+      );
+    }
+    // Otherwise, check if we have classId directly from API response
+    else if (_realScheduleData!.containsKey('classId')) {
+      final classInfo = _realScheduleData!['classId'];
+      
+      return Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_primaryColor.withOpacity(0.1), _accentColor.withOpacity(0.1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _primaryColor.withOpacity(0.2), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: _primaryColor.withOpacity(0.1),
+              spreadRadius: 2,
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [_primaryColor, _accentColor],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _primaryColor.withOpacity(0.3),
+                        spreadRadius: 1,
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.school, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Class Information',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: _primaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _infoRow(Icons.class_, 'Class', classInfo['name'] ?? 'N/A'),
+            const SizedBox(height: 12),
+            _infoRow(Icons.grade, 'Grade', 'Grade ${classInfo['grade'] ?? 'N/A'}'),
+            const SizedBox(height: 12),
+            _infoRow(Icons.group, 'Section', 'Section ${classInfo['section'] ?? 'N/A'}'),
+            const SizedBox(height: 12),
+            _infoRow(Icons.calendar_today, 'Academic Year', '${classInfo['year'] ?? 'N/A'}'),
+          ],
+        ),
+      );
+    }
+    
+    return Container();
+  }
+
+  List<Map<String, dynamic>> _getRealClassesForDay(DateTime day) {
+    if (_realScheduleData == null) {
+      print('📅 Real schedule data is null');
+      return [];
+    }
+    
+    final dayName = DateFormat('EEEE').format(day);
+    print('📅 Finding classes for day: $dayName');
+    
+    // Check if we have weekSchedule data structure
+    if (_realScheduleData!.containsKey('weekSchedule')) {
+      final weekSchedule = _realScheduleData!['weekSchedule'] as Map<String, dynamic>;
+      final dayKey = dayName.toLowerCase();
+      
+      print('📅 Available days in schedule: ${weekSchedule.keys.toList()}');
+      
+      if (weekSchedule.containsKey(dayKey)) {
+        final daySchedule = weekSchedule[dayKey] as List;
+        print('📅 Found ${daySchedule.length} classes for $dayName');
+        
+        return daySchedule.map((period) {
+          return {
+            'subject': period['subject'] ?? 'Unknown Subject',
+            'time': period['timeSlot'] ?? '${period['startTime'] ?? ''} - ${period['endTime'] ?? ''}',
+            'teacher': period['teacher'] ?? 'Unknown Teacher',
+            'teacherCode': period['teacherCode'] ?? '',
+            'room': 'Period ${period['periodNumber'] ?? 'TBD'}',
+            'periodNumber': period['periodNumber'] ?? 0,
+            'color': _getColorForSubject(period['subject'] ?? ''),
+          };
+        }).toList().cast<Map<String, dynamic>>();
+      }
+    }
+    
+    // Direct periods array (as in the API response)
+    if (_realScheduleData!.containsKey('periods')) {
+      final periods = _realScheduleData!['periods'] as List;
+      
+      return periods.where((period) {
+        return period['dayOfWeek'] == dayName;
+      }).map((period) {
+        var teacherName = 'Unknown Teacher';
+        var teacherCode = '';
+        
+        if (period['teacherId'] is Map) {
+          teacherName = period['teacherId']['name'] ?? 'Unknown Teacher';
+          teacherCode = period['teacherId']['teacherId'] ?? '';
+        }
+        
+        return {
+          'subject': period['subject'] ?? 'Unknown Subject',
+          'time': '${period['startTime'] ?? ''} - ${period['endTime'] ?? ''}',
+          'teacher': teacherName,
+          'teacherCode': teacherCode,
+          'room': 'Period ${period['periodNumber'] ?? 'TBD'}',
+          'periodNumber': period['periodNumber'] ?? 0,
+          'color': _getColorForSubject(period['subject'] ?? ''),
+        };
+      }).toList().cast<Map<String, dynamic>>();
+    }
+    
+    print('📅 No valid schedule structure found');
+    return [];
+  }
+
+  Color _getColorForSubject(String subject) {
+    switch (subject.toLowerCase()) {
+      case 'mathematics':
+      case 'math':
+        return Colors.blue;
+      case 'physics':
+        return Colors.green;
+      case 'chemistry':
+        return Colors.pink;
+      case 'biology':
+        return Colors.teal;
+      case 'english':
+      case 'literature':
+        return Colors.purple;
+      case 'history':
+        return Colors.orange;
+      case 'computer science':
+        return Colors.indigo;
+      case 'physical education':
+      case 'pe':
+        return Colors.red;
+      case 'art':
+        return Colors.amber;
+      case 'music':
+        return Colors.deepPurple;
+      case 'geography':
+        return Colors.brown;
+      default:
+        return Colors.grey;
+    }
   }
 
   IconData _getIconForEventType(String type) {
@@ -479,82 +721,95 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
   }
 
   Widget _buildClassCard(Map<String, dynamic> classItem, int index) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: classItem['color'].withOpacity(0.3), width: 1),
-        ),
-        child: Column(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: classItem['color'].withOpacity(0.2),
+            spreadRadius: 2,
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: classItem['color'].withOpacity(0.1),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: classItem['color'].withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.class_, color: classItem['color']),
+                gradient: LinearGradient(
+                  colors: [classItem['color'], classItem['color'].withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: classItem['color'].withOpacity(0.3),
+                    spreadRadius: 1,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          classItem['subject'],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          classItem['time'],
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
+                ],
+              ),
+              child: Icon(Icons.book, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    classItem['subject'],
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    classItem['teacher'],
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    classItem['time'],
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _infoRow(Icons.person, 'Teacher', classItem['teacher']),
-                        const SizedBox(height: 8),
-                        _infoRow(Icons.room, 'Room', classItem['room']),
-                      ],
-                    ),
+            if (classItem.containsKey('periodNumber'))
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [classItem['color'], classItem['color'].withOpacity(0.8)],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.info_outline),
-                    onPressed: () {
-                      _showClassDetails(context, classItem);
-                    },
-                    tooltip: 'Class Details',
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'P${classItem['periodNumber']}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
-                ],
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -564,13 +819,21 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
   Widget _infoRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.grey[600]),
-        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: Colors.grey[600]),
+        ),
+        const SizedBox(width: 12),
         Text(
           '$label: ',
           style: TextStyle(
             fontSize: 14,
             color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
           ),
         ),
         Expanded(
@@ -578,7 +841,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
             value,
             style: const TextStyle(
               fontSize: 14,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -728,8 +991,12 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
     final dayName = DateFormat('EEEE').format(day);
     final dateText = DateFormat('MMMM d').format(day);
     
-    // Weekend logic
-    final isWeekend = day.weekday == DateTime.saturday || day.weekday == DateTime.sunday;
+    // Get classes for this day
+    final classes = _getRealClassesForDay(day);
+    final hasClasses = classes.isNotEmpty;
+    
+    // Weekend logic - only show the "No Classes" message if there are actually no classes
+    final isWeekend = (day.weekday == DateTime.saturday || day.weekday == DateTime.sunday) && !hasClasses;
     
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -743,7 +1010,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
               : null,
         ),
         child: ExpansionTile(
-          initiallyExpanded: isToday,
+          initiallyExpanded: isToday || hasClasses,
           title: Row(
             children: [
               Container(
@@ -799,6 +1066,25 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
                   ),
                 ),
               ],
+              if (hasClasses) ...[
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green, width: 1),
+                  ),
+                  child: Text(
+                    '${classes.length} class${classes.length > 1 ? 'es' : ''}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           children: [
@@ -817,11 +1103,23 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
                   ],
                 ),
               )
+            else if (!hasClasses)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.event_busy, color: Colors.grey[400]),
+                    const SizedBox(width: 8),
+                    Text(
+                      'No Classes Scheduled',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              )
             else
               _buildMiniScheduleForDay(day),
-            
-            // Show events for this day if any
-            ..._buildEventsForDay(day),
           ],
         ),
       ),
@@ -829,56 +1127,8 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
   }
 
   Widget _buildMiniScheduleForDay(DateTime day) {
-    // Similar to buildScheduleForDay but more compact
-    final weekday = day.weekday;
-    List<Map<String, dynamic>> classes = [];
-    
-    // Generate schedule based on the day of week (simplified for brevity)
-    switch (weekday) {
-      case DateTime.monday:
-        classes = [
-          {
-            'subject': 'Mathematics',
-            'time': '09:00 - 10:00 AM',
-            'room': 'Room 101',
-            'color': Colors.blue,
-          },
-          {
-            'subject': 'Physics',
-            'time': '10:15 - 11:15 AM',
-            'room': 'Lab 3',
-            'color': Colors.green,
-          },
-          {
-            'subject': 'English Literature',
-            'time': '12:00 - 01:00 PM',
-            'room': 'Room 203',
-            'color': Colors.purple,
-          },
-          // More classes...
-        ];
-        break;
-      case DateTime.tuesday:
-        classes = [
-          {
-            'subject': 'Biology',
-            'time': '09:00 - 10:30 AM',
-            'room': 'Lab 2',
-            'color': Colors.teal,
-          },
-          {
-            'subject': 'Computer Science',
-            'time': '10:45 - 12:15 PM',
-            'room': 'Computer Lab',
-            'color': Colors.indigo,
-          },
-          // More classes...
-        ];
-        break;
-      // Other weekdays...
-      default:
-        classes = [];
-    }
+    // Get real data for this day
+    final classes = _getRealClassesForDay(day);
 
     if (classes.isEmpty) {
       return const Padding(
@@ -888,211 +1138,83 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
     }
 
     return Column(
-      children: classes.map((classItem) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: 40,
-              decoration: BoxDecoration(
-                color: classItem['color'],
-                borderRadius: BorderRadius.circular(2),
+      children: classes.map((classItem) => Card(
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: classItem['color'],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      classItem['subject'],
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      classItem['teacher'],
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    classItem['subject'],
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    '${classItem['time']} • ${classItem['room']}',
-                    style: const TextStyle(
+                    classItem['time'],
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  if (classItem.containsKey('periodNumber'))
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: classItem['color'].withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'P${classItem['periodNumber']}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: classItem['color'],
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       )).toList(),
     );
   }
 
   List<Widget> _buildEventsForDay(DateTime day) {
-    final events = _getEventsForDay(day);
-    if (events.isEmpty) {
-      return [];
-    }
-
-    return [
-      const Divider(),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: const [
-            Icon(Icons.event, size: 16),
-            SizedBox(width: 8),
-            Text(
-              'Events & Deadlines',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
-      ...events.map((event) => ListTile(
-        leading: CircleAvatar(
-          backgroundColor: event['color'].withOpacity(0.2),
-          radius: 16,
-          child: Icon(
-            _getIconForEventType(event['type']),
-            color: event['color'],
-            size: 16,
-          ),
-        ),
-        title: Text(event['title'], style: const TextStyle(fontSize: 14)),
-        subtitle: Text(event['type'], style: const TextStyle(fontSize: 12)),
-        dense: true,
-      )).toList(),
-    ];
-  }
-
-  Widget _buildCalendarView() {
-    return Column(
-      children: [
-        TableCalendar(
-          firstDay: DateTime.utc(2023, 1, 1),
-          lastDay: DateTime.utc(2025, 12, 31),
-          focusedDay: _focusedDay,
-          calendarFormat: _calendarFormat,
-          eventLoader: _getEventsForDay,
-          selectedDayPredicate: (day) {
-            return isSameDay(_selectedDay, day);
-          },
-          onDaySelected: (selectedDay, focusedDay) {
-            setState(() {
-              _selectedDay = selectedDay;
-              _focusedDay = focusedDay;
-              _selectedEvents.value = _getEventsForDay(selectedDay);
-            });
-          },
-          onFormatChanged: (format) {
-            setState(() {
-              _calendarFormat = format;
-            });
-          },
-          onPageChanged: (focusedDay) {
-            _focusedDay = focusedDay;
-          },
-          calendarStyle: CalendarStyle(
-            markerDecoration: BoxDecoration(
-              color: _tertiaryColor,
-              shape: BoxShape.circle,
-            ),
-            selectedDecoration: BoxDecoration(
-              color: _primaryColor,
-              shape: BoxShape.circle,
-            ),
-            todayDecoration: BoxDecoration(
-              color: _accentColor.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-          ),
-          headerStyle: HeaderStyle(
-            formatButtonVisible: true,
-            titleCentered: true,
-            formatButtonShowsNext: false,
-            formatButtonDecoration: BoxDecoration(
-              color: _primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            formatButtonTextStyle: TextStyle(color: _primaryColor),
-            titleTextStyle: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Icon(Icons.calendar_today, size: 18, color: _accentColor),
-              const SizedBox(width: 8),
-              Text(
-                '${DateFormat('MMMM d, y').format(_selectedDay)} Events',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: _accentColor,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ValueListenableBuilder<List<dynamic>>(
-            valueListenable: _selectedEvents,
-            builder: (context, events, _) {
-              if (events.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.event_busy,
-                        size: 70,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No events for this day',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              return ListView.builder(
-                itemCount: events.length,
-                itemBuilder: (context, index) {
-                  final event = events[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: event['color'].withOpacity(0.2),
-                        child: Icon(
-                          _getIconForEventType(event['type']),
-                          color: event['color'],
-                        ),
-                      ),
-                      title: Text(event['title']),
-                      subtitle: Text(event['type']),
-                      onTap: () {
-                        _showEventDetails(context, event);
-                      },
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
+    // No events to display right now
+    return [];
   }
 
   void _showEventDetails(BuildContext context, Map<String, dynamic> event) {
@@ -1124,4 +1246,5 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
       },
     );
   }
+
 }

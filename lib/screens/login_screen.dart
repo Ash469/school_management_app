@@ -233,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
           } else {
             // Both role and schoolId match, proceed with navigation
             final user = User(
-              id: userData['id'],
+              id: userData['id'], // This is the _id from the response
               email: userData['email'],
               role: userData['role'],
               schoolToken: widget.schoolToken,
@@ -250,7 +250,7 @@ class _LoginScreenState extends State<LoginScreen> {
             );
             
             // Store user information in persistent storage
-            await StorageUtil.setString('userId', user.id);
+            await StorageUtil.setString('userId', user.id); // This stores the _id
             await StorageUtil.setString('userEmail', user.email);
             await StorageUtil.setString('userRole', user.role);
             await StorageUtil.setString('userFirstName', user.profile.firstName);

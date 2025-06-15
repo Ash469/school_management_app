@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// A utility class for handling local storage operations
 /// with proper error handling and fallback mechanisms
@@ -13,9 +14,30 @@ class StorageUtil {
 
   // Initialize and check if SharedPreferences is available
   static Future<bool> init() async {
-    // If already initialized and we have an instance, return current status
+    // If already initialized and we have an instance, verify it's still valid
     if (_initialized && _prefsInstance != null) {
-      return _sharedPreferencesAvailable;
+      try {
+        // Quick test to verify the instance is still valid after hot reload
+        final testKey = 'storage_util_quick_test';
+        final testVal = DateTime.now().millisecondsSinceEpoch.toString();
+        await _prefsInstance!.setString(testKey, testVal);
+        final readVal = _prefsInstance!.getString(testKey);
+        
+        // Instance is still valid
+        if (readVal == testVal) {
+          print('✅ SharedPreferences instance still valid after hot reload');
+          return _sharedPreferencesAvailable;
+        } else {
+          print('⚠️ SharedPreferences instance corrupted, reinitializing...');
+          _initialized = false;
+          _prefsInstance = null;
+        }
+      } catch (e) {
+        print('⚠️ Error checking SharedPreferences after hot reload: $e');
+        // Handle potential issues with the instance
+        _initialized = false;
+        _prefsInstance = null;
+      }
     }
 
     try {
@@ -42,8 +64,13 @@ class StorageUtil {
       }
       
       // Force commit the preferences to disk (important for some devices)
-      if (Platform.isAndroid) {
-        await _prefsInstance!.commit();
+      // Only for Android platform
+      try {
+        if (!kIsWeb && Platform.isAndroid) {
+          await _prefsInstance!.commit();
+        }
+      } catch (e) {
+        print('⚠️ Platform check error (probably on web): $e');
       }
       
       _initialized = true;
@@ -83,8 +110,12 @@ class StorageUtil {
         await _prefsInstance!.setBool(key, value);
         
         // Force commit for Android
-        if (Platform.isAndroid) {
-          await _prefsInstance!.commit();
+        try {
+          if (!kIsWeb && Platform.isAndroid) {
+            await _prefsInstance!.commit();
+          }
+        } catch (e) {
+          // Ignore platform errors on web
         }
         
         return true;
@@ -125,8 +156,12 @@ class StorageUtil {
         await _prefsInstance!.setString(key, value);
         
         // Force commit for Android
-        if (Platform.isAndroid) {
-          await _prefsInstance!.commit();
+        try {
+          if (!kIsWeb && Platform.isAndroid) {
+            await _prefsInstance!.commit();
+          }
+        } catch (e) {
+          // Ignore platform errors on web
         }
         
         print('✓ Saved to SharedPreferences: $key: $value');

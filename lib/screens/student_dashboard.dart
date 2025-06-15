@@ -7,8 +7,13 @@ import 'student/schedule_screen.dart';
 import 'student/grades_screen.dart';
 import 'student/forms_screen.dart';
 import 'student/resource_library_screen.dart';
-import 'student/student_profile_screen.dart'; // Add this import for Student Profile
+import 'student/student_profile_screen.dart';
 import 'school_selection_screen.dart';
+import '../services/schedule_service.dart';
+import '../services/assignment_service.dart';
+import '../models/assignment_model.dart';
+import '../services/student_service.dart'; // Add import for StudentService
+import 'package:shared_preferences/shared_preferences.dart';
 
 class StudentDashboard extends StatefulWidget {
   final User user;
@@ -31,7 +36,10 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
   late Color _accentColor;
   late Color _tertiaryColor;
   late List<Color> _gradientColors;
-  
+  late ScheduleService _scheduleService;
+  late StudentService _studentService; // Add StudentService
+  String? _studentClassId; // Store the student's class ID
+
   @override
   void initState() {
     super.initState();
@@ -40,20 +48,15 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
       duration: const Duration(milliseconds: 1000),
     );
     
+    // Initialize services
+    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
+    _studentService = StudentService(baseUrl: 'http://localhost:3000'); // Initialize StudentService
+    
     // Load theme colors like in teacher dashboard
     _loadThemeColors();
     
-    // Simulate loading data
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _loadUpcomingAssignments();
-          _loadTodaysClasses();
-        });
-        _animationController.forward();
-      }
-    });
+    // Fetch student data including class ID
+    _fetchStudentData();
   }
   
   void _loadThemeColors() {
@@ -63,57 +66,240 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
     _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
   }
   
+  // Fix the _fetchStudentData method and remove the closing brace issue
+  Future<void> _fetchStudentData() async {
+    try {
+      final studentData = await _studentService.getStudentById(widget.user.id);
+      
+      if (mounted) {
+        setState(() {
+          // Extract classId from the student data
+          if (studentData.containsKey('classId')) {
+            if (studentData['classId'] is Map<String, dynamic>) {
+              _studentClassId = studentData['classId']['_id']; // If classId is an object with _id
+            } else {
+              _studentClassId = studentData['classId']; // If classId is directly the ID string
+            }
+          }
+          
+          print('📚 Fetched student classId: $_studentClassId');
+          
+          _isLoading = false;
+          // Load data that depends on student information
+          _loadUpcomingAssignments();
+          _loadTodaysClasses();
+        });
+        _animationController.forward();
+      }
+    } catch (e) {
+      print('📚 Error fetching student data: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          // Initialize with empty data instead of mock data
+          _upcomingAssignments = [];
+          _todaysClasses = [];
+        });
+        _animationController.forward();
+      }
+    }
+  }
+  
   void _loadUpcomingAssignments() {
-    _upcomingAssignments = [
-      {
-        'title': 'Math Assignment',
-        'subject': 'Mathematics',
-        'dueDate': DateTime.now().add(const Duration(days: 2)),
-        'status': 'Pending'
-      },
-      {
-        'title': 'Physics Lab Report',
-        'subject': 'Science',
-        'dueDate': DateTime.now().add(const Duration(days: 3)),
-        'status': 'Pending'
-      },
-      {
-        'title': 'Essay Submission',
-        'subject': 'English',
-        'dueDate': DateTime.now().add(const Duration(days: 1)),
-        'status': 'Draft Saved'
-      },
-    ];
+    // Load real data and handle errors properly
+    _loadRealAssignments().catchError((error) {
+      print('Failed to load real assignment data: $error');
+      // Initialize with empty data instead of mock data
+      setState(() {
+        _upcomingAssignments = [];
+      });
+    });
   }
 
+  Future<void> _loadRealAssignments() async {
+    try {
+      // Use the fetched class ID from student data
+      final classId = _studentClassId;
+      
+      if (classId == null || classId.isEmpty) {
+        print('📚 No class ID found for student');
+        setState(() {
+          _upcomingAssignments = [];
+        });
+        return;
+      }
+
+      print('📚 Fetching assignments for class: $classId');
+      final assignments = await AssignmentService.getAssignments(
+        classId: classId,
+      );
+      
+      print('📚 Fetched ${assignments.length} assignments');
+      
+      if (assignments.isEmpty) {
+        setState(() {
+          _upcomingAssignments = [];
+        });
+        return;
+      }
+      
+      // Get the completed assignments from local storage
+      final prefs = await SharedPreferences.getInstance();
+      final completedAssignments = prefs.getStringList('completed_assignments') ?? [];
+      
+      // Convert the Assignment objects to the map format used by the UI
+      // Include description field from assignment
+      final formattedAssignments = assignments.map((assignment) {
+        final isCompleted = completedAssignments.contains(assignment.id);
+        
+        return {
+          'id': assignment.id,
+          'title': assignment.title,
+          'subject': assignment.subject,
+          'description': assignment.description,
+          'dueDate': assignment.dueDate,
+          'status': isCompleted ? 'Completed' : 'Pending'  // Set status based on local storage
+        };
+      }).toList();
+      
+      // Sort by due date (closest first)
+      formattedAssignments.sort((a, b) => 
+        (a['dueDate'] as DateTime).compareTo(b['dueDate'] as DateTime));
+      
+      setState(() {
+        _upcomingAssignments = formattedAssignments;
+      });
+    } catch (e) {
+      print('📚 Error loading assignments: $e');
+      setState(() {
+        _upcomingAssignments = [];
+      });
+      throw e; // Rethrow to be caught by the catchError
+    }
+  }
+
+ 
+
   void _loadTodaysClasses() {
-    DateFormat('EEEE').format(DateTime.now());
-    _todaysClasses = [
-      {
-        'subject': 'Mathematics',
-        'time': '09:00 - 10:00 AM',
-        'teacher': 'Mr. Johnson',
-        'color': Colors.blue,
-      },
-      {
-        'subject': 'Science',
-        'time': '10:15 - 11:15 AM',
-        'teacher': 'Ms. Garcia',
-        'color': Colors.green,
-      },
-      {
-        'subject': 'English Literature',
-        'time': '12:00 - 01:00 PM',
-        'teacher': 'Mrs. Williams',
-        'color': Colors.purple,
-      },
-      {
-        'subject': 'History',
-        'time': '02:00 - 03:00 PM',
-        'teacher': 'Dr. Brown',
-        'color': Colors.orange,
-      },
-    ];
+    // Load real data and handle errors properly
+    _loadRealTodaysClasses().catchError((error) {
+      print('Failed to load real schedule data: $error');
+      // Initialize with empty data instead of mock data
+      setState(() {
+        _todaysClasses = [];
+      });
+    });
+  }
+
+  Future<void> _loadRealTodaysClasses() async {
+    try {
+      final scheduleData = await _scheduleService.getStudentSchedule(widget.user.id);
+      
+      if (scheduleData != null && scheduleData.containsKey('schedule')) {
+        final schedule = scheduleData['schedule'];
+        final today = DateFormat('EEEE').format(DateTime.now()).toLowerCase();
+        
+        print('📅 Processing schedule data for today: $today');
+        print('📅 Schedule data: $schedule');
+        
+        List<Map<String, dynamic>> classes = [];
+        
+        // Check if we have weekSchedule data
+        if (schedule is Map && schedule.containsKey('weekSchedule')) {
+          final weekSchedule = schedule['weekSchedule'];
+          print('📅 Week schedule: $weekSchedule');
+          
+          if (weekSchedule is Map && weekSchedule.containsKey(today)) {
+            final todaySchedule = weekSchedule[today];
+            print('📅 Today\'s schedule: $todaySchedule');
+            
+            if (todaySchedule is List) {
+              classes = todaySchedule.map((period) {
+                if (period is Map<String, dynamic>) {
+                  // Format time display
+                  String timeDisplay = period['timeSlot'] ?? 
+                      '${period['startTime'] ?? ''} - ${period['endTime'] ?? ''}';
+                  
+                  return {
+                    'subject': period['subject'] ?? 'Unknown Subject',
+                    'time': timeDisplay,
+                    'teacher': period['teacher'] ?? 'Unknown Teacher',
+                    'room': 'Room ${period['periodNumber'] ?? 'TBD'}', // You can enhance this if room data is available
+                    'color': _getColorForSubject(period['subject'] ?? 'Unknown'),
+                    'periodNumber': period['periodNumber'] ?? 0,
+                  };
+                }
+                return <String, dynamic>{};
+              }).where((item) => item.isNotEmpty).toList().cast<Map<String, dynamic>>();
+              
+              // Sort by period number or start time
+              classes.sort((a, b) {
+                int periodA = a['periodNumber'] ?? 0;
+                int periodB = b['periodNumber'] ?? 0;
+                return periodA.compareTo(periodB);
+              });
+            }
+          }
+        }
+        
+        print('📅 Final classes list: $classes');
+        
+        setState(() {
+          _todaysClasses = classes;
+        });
+        
+        if (classes.isEmpty) {
+          print('📅 No classes found for today');
+          setState(() {
+            _todaysClasses = [];
+          });
+        }
+      } else {
+        print('📅 No schedule data found');
+        setState(() {
+          _todaysClasses = [];
+        });
+      }
+    } catch (e) {
+      print('📅 Error loading real schedule: $e');
+      setState(() {
+        _todaysClasses = [];
+      });
+      throw e; // Rethrow to be caught by the catchError
+    }
+  }
+
+  
+
+  Color _getColorForSubject(String subject) {
+    switch (subject.toLowerCase()) {
+      case 'mathematics':
+      case 'math':
+        return Colors.blue;
+      case 'science':
+      case 'physics':
+      case 'chemistry':
+      case 'biology':
+        return Colors.green;
+      case 'english':
+      case 'literature':
+        return Colors.purple;
+      case 'history':
+        return Colors.orange;
+      case 'computer science':
+        return Colors.indigo;
+      case 'physical education':
+      case 'pe':
+        return Colors.red;
+      case 'art':
+        return Colors.amber;
+      case 'music':
+        return Colors.deepPurple;
+      case 'geography':
+        return Colors.brown;
+      default:
+        return Colors.grey;
+    }
   }
   
   @override
@@ -213,12 +399,8 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                 setState(() {
                   _isLoading = true;
                 });
-                await Future.delayed(const Duration(milliseconds: 800));
-                setState(() {
-                  _loadUpcomingAssignments();
-                  _loadTodaysClasses();
-                  _isLoading = false;
-                });
+                // Fetch all data again starting with student data
+                await _fetchStudentData();
                 return Future.value();
               },
               child: SingleChildScrollView(
@@ -232,7 +414,7 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                     const SizedBox(height: 12),
                     _buildTodaySchedule(),
                     const SizedBox(height: 24),
-                    _buildSectionHeader('Upcoming Assignments'),
+                    _buildSectionHeader('HomeWork & Assignments'),
                     const SizedBox(height: 12),
                     _buildUpcomingAssignments(),
                     const SizedBox(height: 24),
@@ -648,8 +830,11 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
         
         Color statusColor;
         switch (assignment['status']) {
-          case 'Completed':
+          case 'Submitted':
             statusColor = Colors.green;
+            break;
+          case 'Graded':
+            statusColor = Colors.purple;
             break;
           case 'Draft Saved':
             statusColor = Colors.orange;
@@ -684,17 +869,30 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                 ),
                 child: Icon(Icons.assignment, color: statusColor),
               ),
-              title: Text(
-                assignment['title'],
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    assignment['subject'],
-                    style: const TextStyle(color: Colors.black87),
+                    assignment['subject'], // Display subject
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
+                  const SizedBox(height: 4),
+                  if (assignment.containsKey('description') && assignment['description'] != null)
+                    Text(
+                      assignment['description'].toString().length > 60
+                          ? '${assignment['description'].toString().substring(0, 60)}...'
+                          : assignment['description'].toString(),
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 12,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  const SizedBox(height: 4),
                   Text(
                     'Due: ${DateFormat('MMM dd, yyyy').format(assignment['dueDate'])} (${daysLeft} days left)',
                     style: TextStyle(
@@ -722,10 +920,199 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                 ),
               ),
               onTap: () {
-                Navigator.pushNamed(context, '/assignment_details');
+                _showAssignmentDetails(context, assignment);
               },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  // Add a method to show assignment details in a modal
+  void _showAssignmentDetails(BuildContext context, Map<String, dynamic> assignment) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  // Handle bar
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  
+                  // Subject chip
+                  Wrap(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(right: 8, bottom: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _getColorForSubject(assignment['subject']).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _getColorForSubject(assignment['subject']).withOpacity(0.3),
+                          ),
+                        ),
+                        child: Text(
+                          assignment['subject'],
+                          style: TextStyle(
+                            color: _getColorForSubject(assignment['subject']),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      
+                      // Status chip
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Text(
+                          assignment['status'],
+                          style: const TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  // Due date
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.calendar_today, color: _accentColor),
+                    title: const Text('Due Date'),
+                    subtitle: Text(
+                      DateFormat('EEEE, MMMM d, yyyy').format(assignment['dueDate']),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  
+                  const Divider(),
+                  
+                  // Description
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8.0, bottom: 8.0),
+                    child: Text(
+                      'Description',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      assignment.containsKey('description') && assignment['description'] != null
+                          ? assignment['description']
+                          : 'No description provided',
+                      style: TextStyle(
+                        color: Colors.grey[800],
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Submit button
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+                    label: const Text(
+                      'Mark as Completed',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () async {
+                      // Store completed status in local storage
+                      final prefs = await SharedPreferences.getInstance();
+                      final String assignmentId = assignment['id'] ?? DateTime.now().toString();
+                      final completedAssignments = prefs.getStringList('completed_assignments') ?? [];
+                      
+                      if (!completedAssignments.contains(assignmentId)) {
+                        completedAssignments.add(assignmentId);
+                        await prefs.setStringList('completed_assignments', completedAssignments);
+                        
+                        // Update the state
+                        setState(() {
+                          // Update the status of this assignment in the list
+                          for (var i = 0; i < _upcomingAssignments.length; i++) {
+                            if (_upcomingAssignments[i]['id'] == assignmentId) {
+                              _upcomingAssignments[i]['status'] = 'Completed';
+                              break;
+                            }
+                          }
+                        });
+                        
+                        // Close the dialog
+                        Navigator.pop(context);
+                        
+                        // Show success message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Assignment marked as completed'),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      } else {
+                        // Assignment was already marked as completed
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Assignment was already marked as completed'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -958,3 +1345,4 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
     );
   }
 }
+

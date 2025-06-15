@@ -7,9 +7,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class SchoolSelectionScreen extends StatefulWidget {
-  const SchoolSelectionScreen({Key? key}) : super(key: key);
+  const SchoolSelectionScreen({super.key});
 
   @override
+  // ignore: library_private_types_in_public_api
   _SchoolSelectionScreenState createState() => _SchoolSelectionScreenState();
 }
 
@@ -25,10 +26,19 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSchools();
-    _checkSharedPreferencesStatus(showErrorDialog: false); 
-    _checkForExistingSchool();
-    _loadTheme();
+    
+    // Wrap initialization in microtask to avoid blocking the UI
+    Future.microtask(() async {
+      // First ensure StorageUtil is initialized
+      await StorageUtil.init();
+      // Then load persistent data
+      await _loadTheme();
+      // Check if we have existing credentials
+      await _checkForExistingSchool();
+      // Finally load schools from API (can fail without breaking the app)
+      await _loadSchools();
+      await _checkSharedPreferencesStatus(showErrorDialog: false);
+    });
   }
 
   // Modified method to debug SharedPreferences with optional dialog display
@@ -115,14 +125,26 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
   // Check if a school token already exists and navigate if it does
   Future<void> _checkForExistingSchool() async {
     try {
+      print('🏫 Checking for existing school credentials...');
+      // Get all required school data
       final String? schoolToken = await StorageUtil.getString('schoolToken');
       final String? schoolName = await StorageUtil.getString('schoolName');
       final String? schoolAddress = await StorageUtil.getString('schoolAddress');
       final String? schoolPhone = await StorageUtil.getString('schoolPhone');
+      final bool? isLoggedIn = await StorageUtil.getBool('isLoggedIn');
       
-      if (schoolToken != null && schoolName != null) {
+      print('🏫 School check results: Token: ${schoolToken != null ? "Found" : "Not found"}, '
+          'Name: ${schoolName != null ? schoolName : "Not found"}, '
+          'IsLoggedIn: ${isLoggedIn == true ? "Yes" : "No"}');
+      
+      // Only navigate if we have all required data AND the user is logged in
+      if (schoolToken != null && schoolToken.isNotEmpty && 
+          schoolName != null && schoolName.isNotEmpty &&
+          isLoggedIn == true) {
+        
         // Auto-navigate to the role selection screen if school token exists
         if (mounted) {
+          print('🏫 Found existing school with login, navigating to role selection');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -135,8 +157,11 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
             ),
           );
         }
+      } else {
+        print('🏫 No existing school found or not logged in, staying on school selection screen');
       }
     } catch (e) {
+      print('⚠️ Error checking for existing school: $e');
       // Continue showing the school selection screen
     }
   }
@@ -171,9 +196,14 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
             _schools = schoolsData.map((school) => {
               'id': school['_id'],
               'name': school['name'],
-              'token': school['token'],
+              'token': school['token'] ?? school['_id'], 
               'address': school['address'] ?? 'No address available',
               'phone': school['phone'] ?? 'No phone available',
+              'secretKey': school['secretKey'] ?? 'qwerty',
+              'teachers': school['teachers'] ?? [],
+              'students': school['students'] ?? [],
+              'classes': school['classes'] ?? [],
+              'parents': school['parents'] ?? [],
             }).toList();
           });
         } else {
@@ -304,6 +334,13 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
       await StorageUtil.setString('schoolId', schoolMatch['id']);
       await StorageUtil.setString('schoolAddress', schoolMatch['address']);
       await StorageUtil.setString('schoolPhone', schoolMatch['phone']);
+      await StorageUtil.setString('schoolSecretKey', schoolMatch['secretKey']);
+      
+      // Store arrays of IDs as JSON strings
+      await StorageUtil.setString('schoolTeachers', json.encode(schoolMatch['teachers'] ?? []));
+      await StorageUtil.setString('schoolStudents', json.encode(schoolMatch['students'] ?? []));
+      await StorageUtil.setString('schoolClasses', json.encode(schoolMatch['classes'] ?? []));
+      await StorageUtil.setString('schoolParents', json.encode(schoolMatch['parents'] ?? []));
       
       if (mounted) {
         Navigator.pushReplacement(
@@ -334,6 +371,13 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
         await StorageUtil.setString('schoolId', match['id']);
         await StorageUtil.setString('schoolAddress', match['address']);
         await StorageUtil.setString('schoolPhone', match['phone']);
+        await StorageUtil.setString('schoolSecretKey', match['secretKey']);
+
+        // Store arrays of IDs as JSON strings
+        await StorageUtil.setString('schoolTeachers', json.encode(match['teachers'] ?? []));
+        await StorageUtil.setString('schoolStudents', json.encode(match['students'] ?? []));
+        await StorageUtil.setString('schoolClasses', json.encode(match['classes'] ?? []));
+        await StorageUtil.setString('schoolParents', json.encode(match['parents'] ?? []));
 
         if (mounted) {
           Navigator.pushReplacement(
