@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import 'package:intl/intl.dart';
 import '../../utils/app_theme.dart';
+import 'notification_screen.dart'; // Import the notification screen
 
 class ParentDashboard extends StatefulWidget {
   final User user;
 
-  const ParentDashboard({Key? key, required this.user}) : super(key: key);
+  const ParentDashboard({super.key, required this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _ParentDashboardState createState() => _ParentDashboardState();
 }
 
@@ -1556,149 +1558,10 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   }
   
   void _showNotifications(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (context, scrollController) {
-            return Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 10, bottom: 6),
-                  width: 40,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Notifications',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _dashboardStats['announcements'] = 0;
-                            _dashboardStats['absences'] = 0;
-                            _dashboardStats['fee_notifications'] = 0;
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Mark all as read'),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    children: [
-                      _buildNotificationItem(
-                        icon: Icons.announcement,
-                        color: Colors.blue,
-                        title: 'Annual Day Celebration',
-                        subtitle: 'School is organizing Annual Day on 25th December',
-                        timeAgo: '2h ago',
-                        index: 0
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.calendar_today,
-                        color: Colors.amber,
-                        title: 'John Smith was absent today',
-                        subtitle: 'Please provide reason for absence',
-                        timeAgo: '5h ago',
-                        index: 1
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.payment,
-                        color: Colors.purple,
-                        title: 'Fee Payment Due',
-                        subtitle: 'Last date for paying quarterly fee is next Monday',
-                        timeAgo: '1d ago',
-                        index: 2
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.grade,
-                        color: Colors.green,
-                        title: 'Term Exam Results Published',
-                        subtitle: 'Emily Smith scored A grade in Mathematics',
-                        timeAgo: '2d ago',
-                        index: 3
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.event,
-                        color: Colors.orange,
-                        title: 'Parent-Teacher Meeting',
-                        subtitle: 'Scheduled for this Saturday from 10 AM to 1 PM',
-                        timeAgo: '3d ago',
-                        index: 4
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildNotificationItem({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-    required String timeAgo,
-    required int index,
-  }) {
-    return TweenAnimationBuilder<double>(
-      duration: Duration(milliseconds: 400 + (index * 100)),
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(20 * (1 - value), 0),
-            child: child,
-          ),
-        );
-      },
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.2),
-          child: Icon(icon, color: color),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(subtitle),
-        trailing: Text(
-          timeAgo,
-          style: TextStyle(color: Colors.grey),
-        ),
-        onTap: () {
-          // Handle notification tap
-        },
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ParentNotificationScreen(user: widget.user),
       ),
     );
   }

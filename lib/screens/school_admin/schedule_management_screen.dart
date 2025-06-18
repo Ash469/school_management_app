@@ -3,6 +3,7 @@ import '../../utils/app_theme.dart';
 import '../../services/schedule_service.dart';
 import '../../services/class_services.dart';
 import '../../services/teacher_service.dart';
+import '../../utils/constants.dart'; 
 
 class ScheduleManagementScreen extends StatefulWidget {
   const ScheduleManagementScreen({super.key});
@@ -67,9 +68,9 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadThemeColors();
-    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
-    _classService = ClassService(baseUrl: 'http://localhost:3000');
-    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+    _scheduleService = ScheduleService(baseUrl: Constants.apiBaseUrl);
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl );
+    _teacherService = TeacherService(baseUrl:  Constants.apiBaseUrl);
     _loadInitialData();
   }
 
@@ -699,11 +700,20 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen>
       appBar: AppBar(
         title: Text(
           'Schedule Management',
-          style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
+          style: TextStyle(color:Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: _primaryColor,
         elevation: 2,
-        iconTheme: IconThemeData(color: _primaryColor),
+        iconTheme: const IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -712,9 +722,9 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: _primaryColor,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: _primaryColor,
+          labelColor: Colors.white,
+          unselectedLabelColor: const Color.fromARGB(255, 165, 158, 158),
+          indicatorColor: Colors.white,
           tabs: const [
             Tab(icon: Icon(Icons.view_list), text: 'View Schedules'),
             Tab(icon: Icon(Icons.add), text: 'Create/Edit'),

@@ -1,5 +1,8 @@
 plugins {
     id "com.android.application"
+    // START: FlutterFire Configuration
+    id 'com.google.gms.google-services'
+    // END: FlutterFire Configuration
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
@@ -24,12 +27,13 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.schoolmanagement.school_app"
-    compileSdk flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
+    compileSdk = 35
+    buildToolsVersion = "30.0.3"  // Specify the installed build tools version
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
@@ -49,6 +53,14 @@ android {
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+
+        // Add resource configurations to filter resources
+        resConfigs "en", "xxhdpi"
+    }
+
+    // Add this to avoid resource processing issues
+    aaptOptions {
+        cruncherEnabled = false
     }
 
     buildTypes {

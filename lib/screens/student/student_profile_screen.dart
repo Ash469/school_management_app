@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/student_service.dart';
+import '../../services/image_service.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class StudentProfileScreen extends StatefulWidget {
   final User user;
@@ -19,14 +23,19 @@ class StudentProfileScreen extends StatefulWidget {
 
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
   late StudentService _studentService;
+  late ImageService _imageService;
   Map<String, dynamic>? _studentData;
   bool _isLoading = true;
+  bool _isUploadingImage = false;
   String? _error;
+  String? _profileImageUrl;
 
   @override
   void initState() {
     super.initState();
-    _studentService = StudentService(baseUrl: 'http://localhost:3000');
+    _studentService = StudentService(baseUrl: Constants.apiBaseUrl);
+    _imageService = ImageService();
+    _profileImageUrl = widget.user.profile.profilePicture;
     _fetchStudentData();
   }
 
@@ -54,6 +63,76 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
     }
   }
 
+  Future<void> _pickAndUploadImage() async {
+    final ImagePicker picker = ImagePicker();
+    
+    try {
+      final XFile? pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      
+      if (pickedFile == null) {
+        print('No image selected');
+        return;
+      }
+      
+      setState(() {
+        _isUploadingImage = true;
+      });
+      
+      File imageFile = File(pickedFile.path);
+      
+      final updatedImageUrl = await _imageService.updateProfileImage(imageFile);
+      
+      if (updatedImageUrl != null) {
+        setState(() {
+          _profileImageUrl = updatedImageUrl;
+          _isUploadingImage = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile image updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Reload profile to get updated data
+        _fetchStudentData();
+      } else {
+        setState(() {
+          _isUploadingImage = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update profile image'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error picking/uploading image: $e');
+      setState(() {
+        _isUploadingImage = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,14 +143,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _fetchStudentData,
           ),
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Edit profile feature coming soon')),
-              );
-            },
-          ),
+         
         ],
       ),
       body: _buildBody(),
@@ -156,13 +228,43 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
       ),
       child: Column(
         children: [
-          Hero(
-            tag: 'profilePic',
-            child: CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.white,
-              backgroundImage: NetworkImage(widget.user.profile.profilePicture),
-            ),
+          Stack(
+            children: [
+              Hero(
+                tag: 'profilePic',
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundColor: Colors.white,
+                  backgroundImage: _profileImageUrl != null 
+                    ? NetworkImage(_profileImageUrl!) 
+                    : NetworkImage(widget.user.profile.profilePicture),
+                ),
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        spreadRadius: 1,
+                        blurRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: _isUploadingImage
+                    ? const CircularProgressIndicator()
+                    : IconButton(
+                        icon: const Icon(Icons.camera_alt, color: Colors.blue),
+                        onPressed: _pickAndUploadImage,
+                        tooltip: 'Update profile picture',
+                      ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 15),
           Text(

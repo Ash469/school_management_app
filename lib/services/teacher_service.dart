@@ -20,7 +20,6 @@ class TeacherService {
   }
 
   Future<String?> _getSchoolId() async {
-    // Get directly from StorageUtil
     return await StorageUtil.getString('schoolId');
   }
 
@@ -736,3 +735,4 @@ class TeacherService {
     }
   }
 }
+

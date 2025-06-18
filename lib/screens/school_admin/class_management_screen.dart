@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/class_services.dart';
-import '../../services/teacher_service.dart'; // Import TeacherService
-import '../../utils/storage_util.dart'; // Make sure this is imported
+import '../../services/teacher_service.dart'; 
+import '../../utils/storage_util.dart'; 
+import '../../utils/constants.dart'; 
 
 class ClassManagementScreen extends StatefulWidget {
   final User user;
@@ -40,25 +41,18 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   // Theme colors from app_theme.dart
   late Color _primaryColor;
   late Color _accentColor;
-  late List<Color> _cardColors;
 
   @override
   void initState() {
     super.initState();
     _loadThemeColors();
-    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl);
     _loadClasses();
   }
 
   void _loadThemeColors() {
     _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
     _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
-    _cardColors = [
-      const Color(0xFFE3F2FD), // Vibrant blue shade
-      const Color(0xFFE0F2F1), // Vibrant teal shade
-      const Color(0xFFFFF8E1), // Vibrant amber shade
-      const Color(0xFFF3E5F5), // Vibrant purple shade
-    ];
   }
 
   // Load classes from API
@@ -71,13 +65,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
     try {
       // Access values directly from StorageUtil memory cache
-      final token = await StorageUtil.getString('accessToken');
-      final schoolToken = await StorageUtil.getString('schoolToken');
       final schoolId = await StorageUtil.getString('schoolId');
-      
-      print('DEBUG - Token from StorageUtil: ${token != null ? "Found" : "Not found"}');
-      print('DEBUG - SchoolToken from StorageUtil: ${schoolToken != null ? "Found" : "Not found"}');
-      print('DEBUG - School ID from StorageUtil: ${schoolId ?? "Not found"}');
       
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
@@ -498,17 +486,36 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
           ),
         ),
         actions: [
+          // Add filter button to app bar
+          IconButton(
+            icon: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(Icons.filter_list, color: Colors.white),
+                if (_activeFilters.values.contains(true))
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 10,
+                        minHeight: 10,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: 'Filter Classes',
+            onPressed: _showFilterDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _refreshClasses,
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No new notifications'))
-              );
-            },
           ),
         ],
       ),
@@ -521,87 +528,130 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   color: _primaryColor,
                   child: Column(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(16.0),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.white, Colors.grey.shade100],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
+                      // Search bar with improved design
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                        child: TextField(
+                          onChanged: (value) {
+                            _searchQuery = value;
+                            _filterClasses();
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Search classes, teachers, subjects...',
+                            prefixIcon: Icon(Icons.search, color: _accentColor),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchQuery = '';
+                                        _filterClasses();
+                                      });
+                                    },
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: _primaryColor),
+                            ),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.shade200,
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Text(
-                                    'Classes',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  if (_activeFilters.values.contains(true) || _searchQuery.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.3),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        '${_filteredClasses.length}/${_classes.length}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const Spacer(),
-                            OutlinedButton.icon(
-                              icon: Icon(Icons.filter_list, color: _accentColor),
-                              label: Text(
-                                _activeFilters.values.contains(true) ? 'Filters Applied' : 'Filter', 
-                                style: TextStyle(color: _accentColor)
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: _accentColor),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                backgroundColor: _activeFilters.values.contains(true) 
-                                  ? _accentColor.withOpacity(0.1) 
-                                  : Colors.transparent,
-                              ),
-                              onPressed: _showFilterDialog,
-                            ),
-                          ],
                         ),
                       ),
+                      
+                      // Active filters chips
+                      if (_activeFilters.values.contains(true))
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.filter_list, color: _accentColor, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Active Filters:',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: _accentColor,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _activeFilters.updateAll((key, value) => false);
+                                        _filterClasses();
+                                      });
+                                    },
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _primaryColor,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text('Clear All'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  if (_activeFilters['class10'] == true)
+                                    _buildActiveFilterChip('Class 10', () {
+                                      setState(() {
+                                        _activeFilters['class10'] = false;
+                                        _filterClasses();
+                                      });
+                                    }),
+                                  if (_activeFilters['class9'] == true)
+                                    _buildActiveFilterChip('Class 9', () {
+                                      setState(() {
+                                        _activeFilters['class9'] = false;
+                                        _filterClasses();
+                                      });
+                                    }),
+                                  if (_activeFilters['class8'] == true)
+                                    _buildActiveFilterChip('Class 8', () {
+                                      setState(() {
+                                        _activeFilters['class8'] = false;
+                                        _filterClasses();
+                                      });
+                                    }),
+                                  if (_activeFilters['mathSubject'] == true)
+                                    _buildActiveFilterChip('Mathematics', () {
+                                      setState(() {
+                                        _activeFilters['mathSubject'] = false;
+                                        _filterClasses();
+                                      });
+                                    }),
+                                  if (_activeFilters['scienceSubject'] == true)
+                                    _buildActiveFilterChip('Science', () {
+                                      setState(() {
+                                        _activeFilters['scienceSubject'] = false;
+                                        _filterClasses();
+                                      });
+                                    }),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        
                       Expanded(
                         child: _classes.isEmpty 
                           ? _buildEmptyView() 
@@ -610,7 +660,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                     ],
                   ),
                 ),
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey.shade50, // Subtle background color
       floatingActionButton: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -637,97 +687,30 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       ),
     );
   }
-
-  // Build error view for API failures
-  Widget _buildErrorView() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 80,
-            color: Colors.red.shade300,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Failed to load classes',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32.0),
-            child: Text(
-              _errorMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _loadClasses,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Try Again'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _primaryColor,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ],
+  
+  // Helper widget for active filter chips
+  Widget _buildActiveFilterChip(String label, VoidCallback onRemove) {
+    return Chip(
+      label: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.white,
+        ),
       ),
+      backgroundColor: _accentColor,
+      deleteIcon: const Icon(
+        Icons.close,
+        size: 16,
+        color: Colors.white,
+      ),
+      onDeleted: onRemove,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 
-  // Build empty view when no classes are available
-  Widget _buildEmptyView() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.class_outlined,
-            size: 80,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No Classes Found',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Get started by creating your first class',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _showCreateClassDialog,
-            icon: const Icon(Icons.add),
-            label: const Text('Create Class'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _primaryColor,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Build the class list view
+  // Build the class list view - improved design
   Widget _buildClassList() {
     return Container(
       decoration: BoxDecoration(
@@ -784,13 +767,18 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ],
             ),
           )
         : ListView.builder(
-            padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
+            padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 80),
             itemCount: _filteredClasses.length,
             itemBuilder: (context, index) {
               final classData = _filteredClasses[index];
@@ -850,293 +838,395 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                     const Color(0xFFBBDEFB),
                   ];
               }
-          
-              final cardColor = _cardColors[index % _cardColors.length];
-          
-              return Card(
-                elevation: 3,
-                shadowColor: gradientColors[0].withOpacity(0.3),
-                margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () => _showClassDetails(classData),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header section with gradient
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: gradientColors,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(18),
-                            topRight: Radius.circular(18),
-                          ),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: gradientColors[0].withOpacity(0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                classData.containsKey('grade') ? classData['grade'].toString() : 
-                                classData['name'].toString().substring(0, 1),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: gradientColors[0],
-                                ),
-                              ),
+              
+              return Hero(
+                tag: 'class-${classData['_id'] ?? classData['id'] ?? index}',
+                child: Card(
+                  elevation: 3,
+                  shadowColor: gradientColors[0].withOpacity(0.3),
+                  margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => _showClassDetails(classData),
+                    splashColor: gradientColors[0].withOpacity(0.1),
+                    highlightColor: gradientColors[0].withOpacity(0.05),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header section with gradient
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: gradientColors,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    classData['name'] as String,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      color: Colors.white,
-                                      shadows: [
-                                        Shadow(
-                                          offset: Offset(0, 1),
-                                          blurRadius: 2,
-                                          color: Color(0x50000000),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Class Teacher: $classTeacherName',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      shadows: [
-                                        Shadow(
-                                          offset: Offset(0, 1),
-                                          blurRadius: 2,
-                                          color: Color(0x50000000),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.book, color: gradientColors[0], size: 20),
-                                const SizedBox(width: 6),
-                                const Text(
-                                  'Subjects:',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            subjects.isEmpty 
-                              ? Text(
-                                  'No subjects assigned',
-                                  style: TextStyle(
-                                    fontSize: 12, 
-                                    color: Colors.grey.shade500,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                )
-                              : Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: subjects
-                                      .map((subject) => Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                colors: [
-                                                  gradientColors[0].withOpacity(0.2),
-                                                  gradientColors[1].withOpacity(0.2),
-                                                ],
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                              ),
-                                              borderRadius: BorderRadius.circular(16),
-                                              border: Border.all(color: gradientColors[0].withOpacity(0.3)),
-                                            ),
-                                            child: Text(
-                                              subject,
-                                              style: TextStyle(
-                                                fontSize: 12, 
-                                                color: gradientColors[0].withOpacity(0.8),
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ))
-                                      .toList(),
-                                ),
-                          ],
-                        ),
-                      ),
-                      // Footer with actions
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(18),
-                            bottomRight: Radius.circular(18),
-                          ),
-                          border: Border(
-                            top: BorderSide(
-                              color: gradientColors[0].withOpacity(0.2),
-                              width: 1,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(18),
+                              topRight: Radius.circular(18),
                             ),
                           ),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            TextButton.icon(
-                              icon: Icon(Icons.edit, size: 18, color: gradientColors[0]),
-                              label: Text('Edit', style: TextStyle(color: gradientColors[0])),
-                              onPressed: () => _showEditClassDialog(classData),
-                            ),
-                            Row(
-                              children: [
-                                Material(
-                                  color: Colors.transparent,
-                                  shape: const CircleBorder(),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: IconButton(
-                                    icon: Icon(Icons.people, color: Colors.green.shade400),
-                                    onPressed: () => _showManageStudentsDialog(classData),
-                                    tooltip: "Manage Students",
-                                  ),
-                                ),
-                                Material(
-                                  color: Colors.transparent,
-                                  shape: const CircleBorder(),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: IconButton(
-                                    icon: Icon(Icons.person_outline, color: Colors.blue.shade400),
-                                    onPressed: () => _showManageTeachersDialog(classData),
-                                    tooltip: "Manage Teachers",
-                                  ),
-                                ),
-                                Material(
-                                  color: Colors.transparent,
-                                  shape: const CircleBorder(),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: IconButton(
-                                    icon: Icon(Icons.book, color: Colors.orange.shade400),
-                                    onPressed: () => _showManageSubjectsDialog(classData),
-                                    tooltip: "Manage Subjects",
-                                  ),
-                                ),
-                                Material(
-                                  color: Colors.transparent,
-                                  shape: const CircleBorder(),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: IconButton(
-                                    icon: Icon(Icons.analytics, color: Colors.purple.shade400),
-                                    onPressed: () => _showClassAnalyticsView(classData),
-                                    tooltip: "Analytics",
-                                  ),
-                                ),
-                                PopupMenuButton(
-                                  icon: const Icon(
-                                    Icons.more_vert,
-                                    color: Colors.grey,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  itemBuilder: (context) => [
-                                    PopupMenuItem(
-                                      value: 'teachers',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.person_outline, color: Colors.blue.shade400, size: 20),
-                                          const SizedBox(width: 8),
-                                          const Text('Manage Teachers'),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'students',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.people, color: Colors.green.shade400, size: 20),
-                                          const SizedBox(width: 8),
-                                          const Text('Manage Students'),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'subjects',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.book, color: Colors.orange.shade400, size: 20),
-                                          const SizedBox(width: 8),
-                                          const Text('Manage Subjects'),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'delete',
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.delete, color: Colors.red, size: 20),
-                                          const SizedBox(width: 8),
-                                          const Text('Delete Class'),
-                                        ],
-                                      ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: gradientColors[0].withOpacity(0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
                                     ),
                                   ],
-                                  onSelected: (value) {
-                                    _handleMenuAction(value, classData);
-                                  },
                                 ),
-                              ],
-                            ),
-                          ],
+                                child: Text(
+                                  classData.containsKey('grade') ? classData['grade'].toString() : 
+                                  classData['name'].toString().substring(0, 1),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                    color: gradientColors[0],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      classData['name'] as String,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        color: Colors.white,
+                                        shadows: [
+                                          Shadow(
+                                            offset: Offset(0, 1),
+                                            blurRadius: 2,
+                                            color: Color(0x50000000),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.person,
+                                          size: 14,
+                                          color: Colors.white70,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            classTeacherName,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              shadows: [
+                                                Shadow(
+                                                  offset: Offset(0, 1),
+                                                  blurRadius: 2,
+                                                  color: Color(0x50000000),
+                                                ),
+                                              ],
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+        
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        
+                        // Class info section
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Class info row
+                              Row(
+                                children: [
+                                  _buildInfoBadge(
+                                    'Grade ${classData['grade'] ?? '?'}',
+                                    Icons.school,
+                                    gradientColors[0],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildInfoBadge(
+                                    'Section ${classData['section'] ?? '-'}',
+                                    Icons.people,
+                                    gradientColors[0],
+                                  ),
+                                  const SizedBox(width: 8),
+          
+                                ],
+                              ),
+                              
+                              const SizedBox(height: 16),
+                              
+                              // Subjects section
+                              Row(
+                                children: [
+                                  Icon(Icons.book, color: gradientColors[0], size: 20),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'Subjects:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              subjects.isEmpty 
+                                ? Text(
+                                    'No subjects assigned',
+                                    style: TextStyle(
+                                      fontSize: 12, 
+                                      color: Colors.grey.shade500,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  )
+                                : Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: subjects
+                                        .map((subject) => Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [
+                                                    gradientColors[0].withOpacity(0.2),
+                                                    gradientColors[1].withOpacity(0.2),
+                                                  ],
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                ),
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(color: gradientColors[0].withOpacity(0.3)),
+                                              ),
+                                              child: Text(
+                                                subject,
+                                                style: TextStyle(
+                                                  fontSize: 12, 
+                                                  color: gradientColors[0].withOpacity(0.8),
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ))
+                                        .toList(),
+                                  ),
+                            ],
+                          ),
+                        ),
+                        
+                        // Footer with actions
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(18),
+                              bottomRight: Radius.circular(18),
+                            ),
+                            border: Border(
+                              top: BorderSide(
+                                color: gradientColors[0].withOpacity(0.2),
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              TextButton.icon(
+                                icon: Icon(Icons.edit, size: 18, color: gradientColors[0]),
+                                label: Text('Edit', style: TextStyle(color: gradientColors[0])),
+                                onPressed: () => _showEditClassDialog(classData),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: Icon(Icons.people, color: Colors.green.shade400, size: 20),
+                                    onPressed: () => _showManageStudentsDialog(classData),
+                                    tooltip: "Manage Students",
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(8),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.person_outline, color: Colors.blue.shade400, size: 20),
+                                    onPressed: () => _showManageTeachersDialog(classData),
+                                    tooltip: "Manage Teachers",
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(8),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.analytics, color: Colors.purple.shade400, size: 20),
+                                    onPressed: () => _showClassAnalyticsView(classData),
+                                    tooltip: "Analytics",
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(8),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
             },
           ),
+    );
+  }
+  
+  // Helper method to build info badges
+  Widget _buildInfoBadge(String text, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: color.withOpacity(0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  // Helper method to show error view
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 80,
+            color: Colors.red.shade300,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Something went wrong',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.red.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: _refreshClasses,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Helper method for empty class view
+  Widget _buildEmptyView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.class_outlined,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No Classes Found',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Create your first class by clicking the button below',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Add New Class'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accentColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: _showCreateClassDialog,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1198,8 +1288,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
             const SizedBox(height: 8),
             Text('Section: ${classData['section'] ?? 'Not specified'}'),
             const SizedBox(height: 8),
-            Text('Students: ${classData['studentCount'] ?? classData['students'] ?? 0}'),
-            const SizedBox(height: 8),
             Text('Class Teacher: $classTeacherName'),
             if (subjects.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -1217,40 +1305,11 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              // Navigate to detailed class view
-              Navigator.pop(context);
-            },
-            child: const Text('View Details'),
-          ),
         ],
       ),
     );
   }
 
-  void _handleMenuAction(String action, Map<String, dynamic> classData) {
-    switch (action) {
-      case 'edit':
-        _showEditClassDialog(classData);
-        break;
-      case 'students':
-        _showManageStudentsDialog(classData);
-        break;
-      case 'subjects':
-        _showManageSubjectsDialog(classData);
-        break;
-      case 'teachers':
-        _showManageTeachersDialog(classData);
-        break;
-      case 'delete':
-        _showDeleteConfirmationDialog(classData);
-        break;
-      case 'analytics':
-        _showClassAnalyticsView(classData);
-        break;
-    }
-  }
   
   void _showManageStudentsDialog(Map<String, dynamic> classData) async {
     // Show loading state
@@ -1528,11 +1587,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       try {
         // Try to fetch analytics, handle potential null response
         final result = await _classService.getClassAnalytics(classId);
-        analytics = result ?? {
-          'attendancePct': 0,
-          'avgGrade': 0,
-          'passPct': 0
-        };
+        analytics = result;
       } catch (e) {
         // If there's an error fetching analytics, use default values
         analytics = {
@@ -1802,7 +1857,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   }
 
   void _showManageSubjectsDialog(Map<String, dynamic> classData) async {
-    final subjectsController = TextEditingController();
     
     // Show loading state initially while we fetch current subjects
     setState(() => _isLoading = true);
@@ -2592,7 +2646,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       final String classId = classData['_id'] ?? classData['id'];
       
       // Initialize TeacherService
-      final teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+      final teacherService = TeacherService(baseUrl:  Constants.apiBaseUrl);
       
       // Fetch all teachers from the school
       final List<Map<String, dynamic>> allTeachers = await teacherService.getAllTeachers();

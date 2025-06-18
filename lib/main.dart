@@ -1,20 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'utils/storage_util.dart';
-import 'screens/school_selection_screen.dart';
+// import 'screens/school_selection_screen.dart';
+import 'screens/role_selection_screen.dart';
 import 'utils/app_theme.dart';
 import 'models/user_model.dart';
 import 'screens/school_admin_dashboard.dart';
 import 'screens/student_dashboard.dart';
 import 'screens/teacher_dashboard.dart';
 import 'screens/parent_dashboard.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'services/fcm_service.dart';
+import 'firebase_options.dart'; 
 
 
 bool _isAppInitialized = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase with options
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // Initialize FCM Service
+  try {
+    final fcmService = FCMService();
+    await fcmService.initialize();
+    if (kDebugMode) {
+      print('🔔 FCM Service initialized successfully');
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      print('⚠️ Error initializing FCM Service: $e');
+    }
+  }
 
   try {
     if (!_isAppInitialized) {
@@ -40,9 +63,10 @@ void main() async {
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
+  // ignore: library_private_types_in_public_api
   _MyAppState createState() => _MyAppState();
 }
 
@@ -86,104 +110,85 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       title: 'School Management App',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getTheme(AppTheme.defaultTheme),
-      home: FutureBuilder<bool>(
-        // This ensures StorageUtil is initialized even after hot reload
-        future: _getInitFuture(),
-        builder: (context, snapshot) {
-          // While initializing, show a loading screen
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return _buildLoadingScreen();
-          }
-          
-          // After initialization, check if user is already logged in
-          return FutureBuilder<bool>(
-            future: _checkLoginStatus(),
-            builder: (context, loginSnapshot) {
-              if (loginSnapshot.connectionState == ConnectionState.waiting) {
-                return _buildLoadingScreen();
-              }
-              
-              // If user is logged in, navigate directly to appropriate dashboard
-              if (loginSnapshot.data == true) {
-                // Show a temporary loading message while redirecting
-                Future.microtask(() => _navigateToUserDashboard(context));
-                return _buildLoadingScreen();
-              }
-              
-              // Otherwise, go to school selection screen
-              return const SchoolSelectionScreen();
-            },
-          );
-        },
-      ),
+      home: const SplashScreen(),
     );
   }
-  
-  Future<bool> _getInitFuture() {
-    if (!_initStarted) {
-      _initStarted = true;
-      _initializeApp().then((value) {
-        if (!_initCompleter.isCompleted) {
-          _initCompleter.complete(value);
-        }
-      }).catchError((error) {
-        if (!_initCompleter.isCompleted) {
-          print('⚠️ Error during app initialization: $error');
-          _initCompleter.complete(false);
-        }
-      });
-    }
-    return _initCompleter.future;
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
   }
-  
-  Future<bool> _initializeApp() async {
+
+  Future<void> _checkLoginStatus() async {
     try {
-      print('🔄 App UI initialization started');
+      // Add a small delay for better UX
+      await Future.delayed(const Duration(seconds: 1));
       
-      // Lightweight initialization for hot reload
-      // Just check if storage is available without writing test values
-      await StorageUtil.init();
+      // Check if user is logged in
+      final isLoggedIn = await StorageUtil.getBool('isLoggedIn') ?? false;
       
-      // Do not write test values here to avoid disturbing existing data
-      return true;
+      if (kDebugMode) {
+        print('🔍 Checking login status: $isLoggedIn');
+      }
+      
+      if (isLoggedIn) {
+        // Try to restore user session
+        await _restoreUserSession();
+      } else {
+        // Navigate to school selection
+        _navigateToSchoolSelection();
+      }
     } catch (e) {
-      print('⚠️ Error during app UI initialization: $e');
-      return false;
+      if (kDebugMode) {
+        print('⚠️ Error checking login status: $e');
+      }
+      // On error, go to school selection
+      _navigateToSchoolSelection();
     }
   }
-  
-  // New method to check if user is logged in
-  Future<bool> _checkLoginStatus() async {
-    final isLoggedIn = await StorageUtil.getBool('isLoggedIn') ?? false;
-    print('🔐 User login status check: $isLoggedIn');
-    return isLoggedIn;
-  }
-  
-  // New method to navigate to appropriate dashboard based on stored user role
-  Future<void> _navigateToUserDashboard(BuildContext context) async {
+
+  Future<void> _restoreUserSession() async {
     try {
-      // Get necessary user data from storage
-      final userId = await StorageUtil.getString('userId');
-      final userEmail = await StorageUtil.getString('userEmail');
-      final userRole = await StorageUtil.getString('userRole');
-      final userFirstName = await StorageUtil.getString('userFirstName');
-      final userLastName = await StorageUtil.getString('userLastName');
+      // Get stored user data
+      final userId = await StorageUtil.getString('userId') ?? '';
+      final userEmail = await StorageUtil.getString('userEmail') ?? '';
+      final userRole = await StorageUtil.getString('userRole') ?? '';
+      final userFirstName = await StorageUtil.getString('userFirstName') ?? '';
+      final userLastName = await StorageUtil.getString('userLastName') ?? '';
       final userPhone = await StorageUtil.getString('userPhone') ?? '';
       final userAddress = await StorageUtil.getString('userAddress') ?? '';
       final userProfilePic = await StorageUtil.getString('userProfilePic') ?? '';
-      final schoolName = await StorageUtil.getString('schoolName') ?? '';
       final schoolToken = await StorageUtil.getString('schoolToken') ?? '';
-      
-      // Check if we have the minimum required data
-      if (userId == null || userEmail == null || userRole == null || 
-          userFirstName == null || userLastName == null) {
-        print('⚠️ Incomplete user data in storage - redirecting to login');
+      final schoolName = await StorageUtil.getString('schoolName') ?? '';
+
+      if (kDebugMode) {
+        print('🔍 Restoring user session:');
+        print('🔍 User ID: $userId');
+        print('🔍 User Email: $userEmail');
+        print('🔍 User Role: $userRole');
+        print('🔍 School Name: $schoolName');
+      }
+
+      // Validate essential data
+      if (userId.isEmpty || userEmail.isEmpty || userRole.isEmpty) {
+        if (kDebugMode) {
+          print('⚠️ Essential user data missing, redirecting to login');
+        }
+        _navigateToSchoolSelection();
         return;
       }
-      
-      print('🔐 Navigating to dashboard for role: $userRole');
-      
-      // Create a user object from stored data
+
+      // Create user object from stored data
       final user = User(
         id: userId,
         email: userEmail,
@@ -198,75 +203,120 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           profilePicture: userProfilePic,
         ),
       );
-      
-      // Navigate to the appropriate dashboard
-      switch (userRole) {
-        case 'school_admin':
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => SchoolAdminDashboard(user: user)),
-          );
-          break;
-        case 'teacher':
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => TeacherDashboard(user: user)),
-          );
-          break;
-        case 'student':
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => StudentDashboard(user: user)),
-          );
-          break;
-        case 'parent':
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => ParentDashboard(user: user)),
-          );
-          break;
-        default:
-          // If role is unrecognized, don't navigate
-          print('⚠️ Unknown user role: $userRole');
-      }
+
+      // Navigate based on role
+      _navigateBasedOnRole(userRole, user);
     } catch (e) {
-      print('⚠️ Error in _navigateToUserDashboard: $e');
-      // In case of any error, let the app default to SchoolSelectionScreen
+      if (kDebugMode) {
+        print('⚠️ Error restoring user session: $e');
+      }
+      _navigateToSchoolSelection();
     }
   }
-  
-  Widget _buildLoadingScreen() {
+
+  void _navigateBasedOnRole(String role, User user) {
+    if (!mounted) return;
+
+    Widget destinationScreen;
+    
+    switch (role) {
+      case 'school_admin':
+        destinationScreen = SchoolAdminDashboard(user: user);
+        break;
+      case 'teacher':
+        destinationScreen = TeacherDashboard(user: user);
+        break;
+      case 'student':
+        destinationScreen = StudentDashboard(user: user);
+        break;
+      case 'parent':
+        destinationScreen = ParentDashboard(user: user);
+        break;
+      default:
+        if (kDebugMode) {
+          print('⚠️ Unknown role: $role, redirecting to school selection');
+        }
+        _navigateToSchoolSelection();
+        return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => destinationScreen),
+    );
+  }
+
+  void _navigateToSchoolSelection() {
+    if (!mounted) return;
+    
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const RoleSelectionScreen(
+         schoolName: "",
+            schoolToken: "",
+            schoolAddress: "",
+            schoolPhone: "",
+
+      )),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.blue.shade100,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.blue.withOpacity(0.3),
-                    blurRadius: 15,
-                    spreadRadius: 5,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.blue.shade100,
+              Colors.white,
+            ],
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Hero(
+                tag: 'app_logo',
+                child: CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Colors.blue,
+                  child: Icon(
+                    Icons.school,
+                    size: 60,
+                    color: Colors.white,
                   ),
-                ],
+                ),
               ),
-              child: const Icon(
-                Icons.school,
-                size: 80,
+              SizedBox(height: 24),
+              Text(
+                'School Management',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Loading...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                ),
+              ),
+              SizedBox(height: 24),
+              CircularProgressIndicator(
                 color: Colors.blue,
               ),
-            ),
-            const SizedBox(height: 24),
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            const Text(
-              'Loading...',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
+

@@ -355,4 +355,44 @@ class AttendanceService {
   static String formatDate(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
+
+  /// Get attendance records for a specific student
+  Future<Map<String, dynamic>> getStudentAttendance(String studentId) async {
+    try {
+      final schoolId = await _getSchoolId();
+      
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      final queryParams = <String, String>{
+        'schoolId': schoolId,
+      };
+
+      final uri = Uri.parse('$baseUrl/attendance/student/$studentId').replace(
+        queryParameters: queryParams,
+      );
+
+      final headers = await _headers;
+      final response = await http.get(uri, headers: headers);
+
+      print('📋 Get student attendance request: $uri');
+      print('📋 Response status: ${response.statusCode}');
+      print('📋 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return data['data'] ?? {};
+        } else {
+          throw Exception(data['message'] ?? 'Failed to fetch attendance records');
+        }
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('📋 Error fetching student attendance: $e');
+      throw Exception('Error fetching attendance records: $e');
+    }
+  }
 }

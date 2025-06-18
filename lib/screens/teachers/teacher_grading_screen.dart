@@ -4,6 +4,7 @@ import '../../services/grading_service.dart';
 import '../../services/class_services.dart';
 import '../../services/teacher_service.dart';
 import '../../services/schedule_service.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class TeacherGradingScreen extends StatefulWidget {
   final User user;
@@ -71,7 +72,7 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> with Single
     // Remove tab controller initialization
     
     // Initialize services
-    const baseUrl = 'http://localhost:3000';
+    const baseUrl = Constants.apiBaseUrl; // Use the constant for base URL
     _gradingService = GradingService(baseUrl: baseUrl);
     _classService = ClassService(baseUrl: baseUrl);
     _teacherService = TeacherService(baseUrl: baseUrl);

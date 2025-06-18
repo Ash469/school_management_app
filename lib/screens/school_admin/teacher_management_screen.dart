@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
-import '../../services/teacher_service.dart'; // Add import for TeacherService
-import '../../utils/storage_util.dart'; // Add import for StorageUtil
+import '../../services/teacher_service.dart'; 
+import '../../utils/storage_util.dart'; 
+import '../../utils/constants.dart';
 
 class TeacherManagementScreen extends StatefulWidget {
   final User user;
@@ -29,7 +30,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
   late Color _primaryColor;
   late Color _accentColor;
   late Color _tertiaryColor;
-  late List<Color> _cardColors;
 
   final _searchController = TextEditingController();
   String _selectedFilter = 'All';
@@ -38,7 +38,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
   void initState() {
     super.initState();
     _loadThemeColors();
-    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+    _teacherService = TeacherService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
     _loadTeachers();
   }
   
@@ -46,12 +46,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     _primaryColor = AppTheme.getPrimaryColor(AppTheme.defaultTheme);
     _accentColor = AppTheme.getAccentColor(AppTheme.defaultTheme);
     _tertiaryColor = AppTheme.getTertiaryColor(AppTheme.defaultTheme);
-    _cardColors = [
-      const Color(0xFFE3F2FD), // Vibrant blue shade
-      const Color(0xFFE0F2F1), // Vibrant teal shade
-      const Color(0xFFFFF8E1), // Vibrant amber shade
-      const Color(0xFFF3E5F5), // Vibrant purple shade
-    ];
   }
 
   // Load teachers from API
@@ -211,17 +205,17 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
       appBar: AppBar(
         title: Text('Teacher Management', 
           style: TextStyle(
-            color: _primaryColor,
+            color: Colors.white,
             fontWeight: FontWeight.bold,
           )
         ),
-        backgroundColor: Colors.white,
+       backgroundColor: _primaryColor,
         elevation: 2,
-        iconTheme: IconThemeData(color: _primaryColor),
+        iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.white, Colors.grey.shade50],
+              colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -231,14 +225,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshTeachers,
-          ),
-          IconButton(
-            icon: Icon(Icons.notifications, color: _accentColor),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No new notifications'))
-              );
-            },
           ),
         ],
       ),
@@ -376,7 +362,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                             : _filteredTeachers.isEmpty
                                 ? _buildNoMatchView()
                                 : ListView.builder(
-                                    padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
+                                    padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 100), // Added bottom padding
                                     itemCount: _filteredTeachers.length,
                                     itemBuilder: (context, index) {
                                       final teacher = _filteredTeachers[index];
@@ -515,14 +501,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                                                           ),
                                                         ],
                                                       ),
-                                                      child: Text(
-                                                        'ID: ${teacher['id']}',
-                                                        style: TextStyle(
-                                                          color: gradientColors[0],
-                                                          fontWeight: FontWeight.bold,
-                                                          fontSize: 12,
-                                                        ),
-                                                      ),
+                                                      
                                                     ),
                                                   ],
                                                 ),

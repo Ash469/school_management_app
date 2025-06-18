@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../screens/login_screen.dart';
 import '../utils/storage_util.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'school_selection_screen.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   final String schoolName;
@@ -11,100 +9,16 @@ class RoleSelectionScreen extends StatelessWidget {
   final String schoolPhone;
   
   const RoleSelectionScreen({
-    Key? key, 
+    super.key, 
     required this.schoolName,
     required this.schoolToken,
     required this.schoolAddress,
     required this.schoolPhone,
-  }) : super(key: key);
-
-  Future<void> _logout(BuildContext context) async {
-    // Clear only school-related data, not user data
-    print("Clearing school selection...");
-    
-    try {
-      // Use StorageUtil to clear only school-related data
-      await StorageUtil.setString('schoolToken', '');
-      await StorageUtil.setString('schoolName', '');
-      await StorageUtil.setString('schoolId', '');
-      await StorageUtil.setString('schoolAddress', '');
-      await StorageUtil.setString('schoolPhone', '');
-      
-      // Set login status to false (user not logged in)
-      await StorageUtil.setBool('isLoggedIn', false);
-      
-      // Verify data was cleared
-      print("School selection cleared, returning to school selection screen");
-      
-      // Navigate back to school selection
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
-      );
-    } catch (e) {
-      print("Error during school logout: $e");
-      // Still try to navigate even if there was an error
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const SchoolSelectionScreen()),
-      );
-    }
-  }
-
-  Future<void> _logStoredValues() async {
-    try {
-      print("📱 READING ALL STORED SCHOOL VALUES FROM SHAREDPREFERENCES:");
-      
-      final schoolToken = await StorageUtil.getString('schoolToken') ?? '';
-      final schoolName = await StorageUtil.getString('schoolName') ?? '';
-      final schoolId = await StorageUtil.getString('schoolId') ?? '';
-      final schoolAddress = await StorageUtil.getString('schoolAddress') ?? '';
-      final schoolPhone = await StorageUtil.getString('schoolPhone') ?? '';
-      final schoolSecretKey = await StorageUtil.getString('schoolSecretKey') ?? '';
-      final schoolTeachers = await StorageUtil.getString('schoolTeachers') ?? '';
-      final schoolStudents = await StorageUtil.getString('schoolStudents') ?? '';
-      final schoolClasses = await StorageUtil.getString('schoolClasses') ?? '';
-      final schoolParents = await StorageUtil.getString('schoolParents') ?? '';
-      
-      print("✅ schoolToken: $schoolToken");
-      print("✅ schoolName: $schoolName");
-      print("✅ schoolId: $schoolId");
-      print("✅ schoolAddress: $schoolAddress");
-      print("✅ schoolPhone: $schoolPhone");
-      print("✅ schoolSecretKey: $schoolSecretKey");
-      print("✅ schoolTeachers: $schoolTeachers");
-      print("✅ schoolStudents: $schoolStudents");
-      print("✅ schoolClasses: $schoolClasses");
-      print("✅ schoolParents: $schoolParents");
-      print("📱 END OF STORED VALUES");
-    } catch (e) {
-      print("❌ Error reading stored values: $e");
-    }
-  }
+  });
 
   @override
   Widget build(BuildContext context) {
-    
-    // Log all stored values from SharedPreferences
-    _logStoredValues();
-    
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => _logout(context),
-          tooltip: 'Back to School Selection',
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _logout(context),
-            tooltip: 'Change School',
-          ),
-        ],
-      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -119,7 +33,7 @@ class RoleSelectionScreen extends StatelessWidget {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 24.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -132,6 +46,13 @@ class RoleSelectionScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.blue.withOpacity(0.2),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                       ),
                       child: const Icon(
                         Icons.school,
@@ -140,54 +61,69 @@ class RoleSelectionScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  Text(
-                    schoolName,
+                  
+                  const SizedBox(height: 24),
+                  
+                  const Text(
+                    'School Management App',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 24,
+                    style: TextStyle(
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.blue,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  
+                  const SizedBox(height: 8),
+                  
                   const Text(
                     'Select your role to continue',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       color: Colors.grey,
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  
+                  const SizedBox(height: 40),
+                  
                   _buildRoleButton(
                     context: context,
                     role: 'school_admin',
                     label: 'School Admin',
+                    subtitle: 'Manage school operations',
                     icon: Icons.admin_panel_settings,
                     color: Colors.blue,
                   ),
+                  
                   const SizedBox(height: 16),
+                  
                   _buildRoleButton(
                     context: context,
                     role: 'teacher',
                     label: 'Teacher',
+                    subtitle: 'Teach and manage classes',
                     icon: Icons.school,
                     color: Colors.green,
                   ),
                   const SizedBox(height: 16),
+                  
                   _buildRoleButton(
                     context: context,
                     role: 'student',
                     label: 'Student',
+                    subtitle: 'Access your academic portal',
                     icon: Icons.person,
                     color: Colors.orange,
                   ),
+                  
                   const SizedBox(height: 16),
+                 
                   _buildRoleButton(
                     context: context,
                     role: 'parent',
                     label: 'Parent',
+                    subtitle: 'Monitor your child\'s progress',
                     icon: Icons.family_restroom,
                     color: Colors.purple,
                   ),
@@ -204,47 +140,105 @@ class RoleSelectionScreen extends StatelessWidget {
     required BuildContext context,
     required String role,
     required String label,
+    required String subtitle,
     required IconData icon,
     required Color color,
   }) {
-    return ElevatedButton(
-      onPressed: () async {
-        // Store selected role in local storage
-        await StorageUtil.setString('selectedRole', role);
-        
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LoginScreen(
-              selectedRole: role,
-              schoolToken: schoolToken,
-              schoolName: schoolName,
-            ),
-          ),
-        );
-      },
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 24),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+    return Container(
+      height: 74,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            // Store selected role in local storage
+            await StorageUtil.setString('selectedRole', role);
+            
+            // Clear any previous login state when selecting a new role
+            await StorageUtil.setBool('isLoggedIn', false);
+            
+            Navigator.push(
+              // ignore: use_build_context_synchronously
+              context,
+              MaterialPageRoute(
+                builder: (context) => LoginScreen(
+                  selectedRole: role,
+                  schoolToken: schoolToken,
+                  schoolName: schoolName,
+                ),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color, color.withOpacity(0.8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 26,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white.withOpacity(0.8),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
+

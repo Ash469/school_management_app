@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../school_selection_screen.dart'; // Add this import
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import '../school_selection_screen.dart';
+import '../../services/image_service.dart';
 
 class SchoolAdminProfileScreen extends StatefulWidget {
-  const SchoolAdminProfileScreen({Key? key}) : super(key: key);
+  const SchoolAdminProfileScreen({super.key});
 
   @override
   State<SchoolAdminProfileScreen> createState() => _SchoolAdminProfileScreenState();
@@ -23,10 +26,14 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
   String? schoolPhone;
   String? schoolSecretKey;
   String? userId;
+  String? profileImageUrl;
+  bool _isUploadingImage = false;
+  late ImageService _imageService;
 
   @override
   void initState() {
     super.initState();
+    _imageService = ImageService();
     _loadProfileData();
   }
 
@@ -46,7 +53,101 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
       schoolPhone = prefs.getString('schoolPhone') ?? '555-123-4567';
       schoolSecretKey = prefs.getString('schoolSecretKey') ?? 'qwerty';
       userId = prefs.getString('userId') ?? '684991cec1f5eaeb0d9b1d67';
+      profileImageUrl = prefs.getString('profileImageUrl');
     });
+    
+    // Fetch profile image if available
+    if (userId != null) {
+      _fetchProfileImage();
+    }
+  }
+  
+  Future<void> _fetchProfileImage() async {
+    try {
+      final imageUrl = await _imageService.getProfileImage(userId!);
+      if (imageUrl != null) {
+        setState(() {
+          profileImageUrl = imageUrl;
+        });
+        
+        // Save to preferences for future use
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('profileImageUrl', imageUrl);
+      }
+    } catch (e) {
+      print('Error fetching profile image: $e');
+    }
+  }
+  
+  Future<void> _pickAndUploadImage() async {
+    final ImagePicker picker = ImagePicker();
+    
+    try {
+      final XFile? pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      
+      if (pickedFile == null) {
+        print('No image selected');
+        return;
+      }
+      
+      setState(() {
+        _isUploadingImage = true;
+      });
+      
+      File imageFile = File(pickedFile.path);
+      
+      final updatedImageUrl = await _imageService.updateProfileImage(imageFile);
+      
+      if (updatedImageUrl != null) {
+        setState(() {
+          profileImageUrl = updatedImageUrl;
+          _isUploadingImage = false;
+        });
+        
+        // Save to preferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('profileImageUrl', updatedImageUrl);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile image updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        setState(() {
+          _isUploadingImage = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update profile image'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error picking/uploading image: $e');
+      setState(() {
+        _isUploadingImage = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -58,14 +159,6 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              // TODO: Navigate to edit profile screen
-            },
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -90,17 +183,51 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
               ),
               child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.blue[600],
-                    child: Text(
-                      '${userFirstName?[0] ?? 'A'}${userLastName?[0] ?? 'U'}',
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                  Stack(
+                    children: [
+                      profileImageUrl != null
+                        ? CircleAvatar(
+                            radius: 50,
+                            backgroundImage: NetworkImage(profileImageUrl!),
+                            backgroundColor: Colors.grey[200],
+                          )
+                        : CircleAvatar(
+                            radius: 50,
+                            backgroundColor: Colors.blue[600],
+                            child: Text(
+                              '${userFirstName?[0] ?? 'A'}${userLastName?[0] ?? 'U'}',
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                spreadRadius: 1,
+                                blurRadius: 3,
+                              ),
+                            ],
+                          ),
+                          child: _isUploadingImage
+                            ? const CircularProgressIndicator()
+                            : IconButton(
+                                icon: const Icon(Icons.camera_alt, color: Colors.blue),
+                                onPressed: _pickAndUploadImage,
+                                tooltip: 'Update profile picture',
+                              ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -164,24 +291,6 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
             // Action Buttons
             Row(
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // TODO: Navigate to edit profile
-                    },
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Edit Profile'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[600],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {

@@ -5,6 +5,7 @@ import '../utils/app_theme.dart';
 import 'role_selection_screen.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../utils/constants.dart';
 
 class SchoolSelectionScreen extends StatefulWidget {
   const SchoolSelectionScreen({super.key});
@@ -134,7 +135,7 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
       final bool? isLoggedIn = await StorageUtil.getBool('isLoggedIn');
       
       print('🏫 School check results: Token: ${schoolToken != null ? "Found" : "Not found"}, '
-          'Name: ${schoolName != null ? schoolName : "Not found"}, '
+          'Name: ${schoolName ?? "Not found"}, '
           'IsLoggedIn: ${isLoggedIn == true ? "Yes" : "No"}');
       
       // Only navigate if we have all required data AND the user is logged in
@@ -174,9 +175,11 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
     });
 
     try {
-      // For Chrome debugging, we can use direct localhost
-      final apiBaseUrl = await StorageUtil.getString('apiBaseUrl') ?? 'http://localhost:3000';
+      // Changed from localhost to a network IP address format
+      final apiBaseUrl = Constants.apiBaseUrl; // Use the constant for base URL
       final url = '$apiBaseUrl/schools/';
+      
+      print('🔍 Attempting to connect to API at: $url');
       
       final response = await http.get(
         Uri.parse(url),
@@ -235,7 +238,7 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
     
     // Load current API URL if available
     StorageUtil.getString('apiBaseUrl').then((currentUrl) {
-      apiUrlController.text = currentUrl ?? 'http://localhost:3000';
+      apiUrlController.text = currentUrl ?? Constants.apiBaseUrl; // Use the constant as default
     });
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -250,14 +253,19 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Could not connect to the API server. This might happen because:',
+                    'Could not connect to the API server. When debugging on a mobile device:',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 8),
-                  const Text('• The server is not running'),
-                  const Text('• CORS policy blocking browser requests'),
-                  const Text('• Network configuration issues'),
-                  const SizedBox(height: 16),
+              
+                  const Text('• Use your laptop\'s IP address, not localhost'),
+                  const Text('• Ensure your phone and laptop are on the same WiFi network'),
+                  const Text('• Make sure your backend server is running'),
+                 
+                  const Text('To find your laptop\'s IP address:'),
+                  const Text('• Windows: Run "ipconfig" in Command Prompt'),
+                  const Text('• Mac: Go to System Preferences > Network'),
+                  const Text('• Linux: Run "ifconfig" or "ip addr" in terminal'),
+                  
                   const Text('Error details:'),
                   Container(
                     padding: const EdgeInsets.all(8),
@@ -277,13 +285,14 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
                     controller: apiUrlController,
                     decoration: const InputDecoration(
                       labelText: 'API Base URL',
-                      hintText: 'http://localhost:3000',
+                      hintText:Constants.apiBaseUrl,
                       border: OutlineInputBorder(),
                     ),
+                    keyboardType: TextInputType.url,
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'Note: For Chrome debugging, ensure your backend has CORS enabled.',
+                    'Replace "192.168.162.52" with your laptop\'s actual IP address.',
                     style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
                   ),
                 ],
@@ -300,6 +309,7 @@ class _SchoolSelectionScreenState extends State<SchoolSelectionScreen> {
                   if (newUrl.isNotEmpty) {
                     await StorageUtil.setString('apiBaseUrl', newUrl);
                     if (mounted) {
+                      // ignore: use_build_context_synchronously
                       Navigator.of(context).pop();
                       // Retry loading schools with new URL
                       _loadSchools();

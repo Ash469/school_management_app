@@ -4,7 +4,7 @@ import '../models/assignment_model.dart';
 import '../utils/storage_util.dart';
 
 class AssignmentService {
-  static const String baseUrl = 'http://localhost:3000/assignments';
+  static const String baseUrl = 'https://nova-backend-tlzr.onrender.com/api/assignments';
   
   static Future<String?> _getToken() async {
     // First try the standard token key

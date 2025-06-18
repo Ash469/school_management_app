@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import '../../services/teacher_service.dart';
+import '../../services/image_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class TeacherProfileScreen extends StatefulWidget {
   final User user;
@@ -18,15 +23,60 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
   late List<Color> _gradientColors;
   bool _isLoading = true;
   bool _isResettingPassword = false;
+  bool _isUploadingImage = false;
   Map<String, dynamic>? _teacherData;
   late TeacherService _teacherService;
+  late ImageService _imageService;
+  String? _profileImageUrl;
 
   @override
   void initState() {
     super.initState();
-    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
+    _teacherService = TeacherService(baseUrl: Constants.apiBaseUrl); // Use the constant for base URL
+    _imageService = ImageService();
     _loadThemeColors();
     _loadTeacherProfile();
+    _loadProfileImageFromPrefs();
+  }
+
+  Future<void> _loadProfileImageFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedImageUrl = prefs.getString('profileImageUrl');
+      if (cachedImageUrl != null) {
+        setState(() {
+          _profileImageUrl = cachedImageUrl;
+        });
+      } else {
+        setState(() {
+          _profileImageUrl = widget.user.profile.profilePicture;
+        });
+      }
+      
+      _fetchProfileImage();
+    } catch (e) {
+      print('Error loading profile image from prefs: $e');
+      setState(() {
+        _profileImageUrl = widget.user.profile.profilePicture;
+      });
+      _fetchProfileImage();
+    }
+  }
+
+  Future<void> _fetchProfileImage() async {
+    try {
+      final imageUrl = await _imageService.getProfileImage(widget.user.id);
+      if (imageUrl != null) {
+        setState(() {
+          _profileImageUrl = imageUrl;
+        });
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('profileImageUrl', imageUrl);
+      }
+    } catch (e) {
+      print('Error fetching profile image: $e');
+    }
   }
 
   void _loadThemeColors() {
@@ -151,6 +201,79 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
     }
   }
 
+  Future<void> _pickAndUploadImage() async {
+    final ImagePicker picker = ImagePicker();
+    
+    try {
+      final XFile? pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      
+      if (pickedFile == null) {
+        print('No image selected');
+        return;
+      }
+      
+      setState(() {
+        _isUploadingImage = true;
+      });
+      
+      File imageFile = File(pickedFile.path);
+      
+      final updatedImageUrl = await _imageService.updateProfileImage(imageFile);
+      
+      if (updatedImageUrl != null) {
+        setState(() {
+          _profileImageUrl = updatedImageUrl;
+          _isUploadingImage = false;
+        });
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('profileImageUrl', updatedImageUrl);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile image updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Reload profile to get updated data
+        _loadTeacherProfile();
+      } else {
+        setState(() {
+          _isUploadingImage = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update profile image'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error picking/uploading image: $e');
+      setState(() {
+        _isUploadingImage = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -263,10 +386,54 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
         ),
         child: Column(
           children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.white,
-              backgroundImage: NetworkImage(widget.user.profile.profilePicture),
+            Stack(
+              children: [
+                _profileImageUrl != null
+                  ? CircleAvatar(
+                      radius: 50,
+                      backgroundImage: NetworkImage(_profileImageUrl!),
+                      backgroundColor: Colors.white,
+                      onBackgroundImageError: (exception, stackTrace) {
+                        print('Error loading profile image: $exception');
+                      },
+                    )
+                  : CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.white,
+                      child: Text(
+                        '${widget.user.profile.firstName[0]}${widget.user.profile.lastName[0]}',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          spreadRadius: 1,
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                    child: _isUploadingImage
+                      ? const CircularProgressIndicator()
+                      : IconButton(
+                          icon: const Icon(Icons.camera_alt, color: Colors.blue),
+                          onPressed: _pickAndUploadImage,
+                          tooltip: 'Update profile picture',
+                        ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             Text(
@@ -403,8 +570,8 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
               ),
             ] else ...[
               _buildInfoRow('Teaching Subjects', 'No subjects assigned'),

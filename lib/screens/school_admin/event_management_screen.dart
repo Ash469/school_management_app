@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/event_service.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class EventManagementScreen extends StatefulWidget {
   const EventManagementScreen({Key? key}) : super(key: key);
@@ -16,7 +17,7 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
   @override
   void initState() {
     super.initState();
-    _eventService = EventService(baseUrl: 'http://localhost:3000');
+    _eventService = EventService(baseUrl: Constants.apiBaseUrl);
     _loadEvents();
   }
   
@@ -133,13 +134,6 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
                 }
                 
                 try {
-                  final newEvent = await _eventService.createEvent(
-                    name: nameController.text,  // Changed from title to name
-                    description: descriptionController.text,
-                    date: dateController.text,
-                    venue: venueController.text.isEmpty ? null : venueController.text,  // Changed from location to venue
-                    time: timeController.text.isEmpty ? null : timeController.text,
-                  );
                   
                   Navigator.of(context).pop();
                   _loadEvents(); // Reload all events

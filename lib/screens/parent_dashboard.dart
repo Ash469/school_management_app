@@ -1,22 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:school_app/screens/role_selection_screen.dart';
 import '../models/user_model.dart';
 import 'package:intl/intl.dart';
+import '../utils/storage_util.dart'; 
 import '../utils/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 import '../screens/parents/attendance_screen.dart';
-import '../screens/parents/fee_management_screen.dart';
 import '../screens/parents/performance_screen.dart';
-import 'school_selection_screen.dart';
 import '../services/student_service.dart';
 import '../services/attendance_service.dart';
 import '../services/grading_service.dart';
 import '../services/class_services.dart';
+import './parents/notification_screen.dart';
+import '../services/fcm_service.dart';
+import '../utils/constants.dart'; // Import constants for base URL
 
 class ParentDashboard extends StatefulWidget {
   final User user;
 
-  const ParentDashboard({Key? key, required this.user}) : super(key: key);
+  const ParentDashboard({super.key, required this.user});
 
   @override
+  // ignore: library_private_types_in_public_api
   _ParentDashboardState createState() => _ParentDashboardState();
 }
 
@@ -46,7 +51,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     );
     
     // Initialize services with baseUrl like other dashboards
-    const baseUrl = 'http://localhost:3000';
+    const baseUrl = Constants.apiBaseUrl; // Use the constant for base URL
     _studentService = StudentService(baseUrl: baseUrl);
     _attendanceService = AttendanceService(baseUrl: baseUrl);
     _gradingService = GradingService(baseUrl: baseUrl);
@@ -64,46 +69,56 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     try {
       print('👨‍👩‍👧‍👦 Loading students for parent: ${widget.user.id}');
       
-      // Get all students
-      final allStudents = await _studentService.getAllStudents();
-      print('👨‍👩‍👧‍👦 Total students found: ${allStudents.length}');
-      
-      // Filter students that belong to this parent
-      final parentStudents = allStudents.where((student) {
-        final parents = student['parents'] as List<dynamic>? ?? [];
-        
-        // Check if this parent's user ID is in the student's parents list
-        for (var parent in parents) {
-          if (parent is Map<String, dynamic>) {
-            // Check various possible parent ID fields
-            final parentUserId = parent['userId'] ?? parent['_id'] ?? parent['id'];
-            if (parentUserId == widget.user.id) {
-              return true;
-            }
-            
-            // Also check if parent email matches (alternative matching)
-            final parentEmail = parent['email'];
-            if (parentEmail != null && parentEmail == widget.user.email) {
-              return true;
-            }
-          }
-        }
-        return false;
-      }).toList();
-      
-      print('👨‍👩‍👧‍👦 Found ${parentStudents.length} children for parent');
+      // Get students for this parent directly from the API
+      final response = await _studentService.getStudentsByParentId(widget.user.id);
+      print('👨‍👩‍👧‍👦 Found ${response.length} children for parent');
       
       // Transform student data to the format expected by the UI
       final transformedStudents = await Future.wait(
-        parentStudents.map((student) async {
-          // Get real attendance data
-          final attendanceData = await _getStudentAttendance(student['_id']);
+        response.map((student) async {
+          // Get attendance data - use academicReport if available, otherwise fetch it
+          Map<String, dynamic> attendanceData;
+          if (student['academicReport'] != null && 
+              student['academicReport']['attendancePct'] != null) {
+            final attendancePct = student['academicReport']['attendancePct'] as int;
+            attendanceData = {
+              'percentage': '$attendancePct%',
+              'presentDays': 0, // Not available in the report
+              'totalDays': 0,   // Not available in the report
+            };
+          } else {
+            attendanceData = await _getStudentAttendance(student['_id']);
+          }
           
-          // Get real grade data
-          final gradeData = await _getStudentGrades(student['_id']);
+          // Get grade data - use academicReport if it has grades, otherwise fetch it
+          Map<String, dynamic> gradeData;
+          if (student['academicReport'] != null && 
+              student['academicReport']['grades'] != null &&
+              (student['academicReport']['grades'] as List).isNotEmpty) {
+            // Calculate from academicReport grades
+            final average = 85.0; // Placeholder, would calculate from grades
+            final gpa = (average / 25).clamp(0.0, 4.0);
+            gradeData = {
+              'gpa': gpa.toStringAsFixed(1),
+              'average': average,
+            };
+          } else {
+            gradeData = await _getStudentGrades(student['_id']);
+          }
           
-          // Get class information for grade and section
-          final classInfo = await _getClassInfo(student['classId']);
+          // Extract class info directly from the response if classId is expanded
+          Map<String, dynamic> classInfo;
+          if (student['classId'] is Map<String, dynamic>) {
+            final classData = student['classId'] as Map<String, dynamic>;
+            classInfo = {
+              'grade': classData['grade'] ?? 'Unknown',
+              'section': classData['section'] ?? 'A',
+              'name': classData['name'] ?? 'Unknown Class',
+            };
+          } else {
+            // Fallback to fetching class info if not expanded
+            classInfo = await _getClassInfo(student['classId']);
+          }
           
           return {
             '_id': student['_id'] ?? '',
@@ -114,7 +129,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
             'image': _getStudentImage(student),
             'attendance': attendanceData['percentage'],
             'gpa': gradeData['gpa'],
-            'fees': _calculateMockFeeStatus(), // Keep mock for now, replace with fee service
             'email': student['email'] ?? '',
             'phone': student['phone'] ?? '',
             'dob': student['dob'] ?? '',
@@ -238,16 +252,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     return 3.5 + (DateTime.now().millisecond % 5) / 10; // 3.5-3.9
   }
 
-  Map<String, dynamic> _calculateMockFeeStatus() {
-    // Mock fee status - replace with actual fee service call
-    final isPending = DateTime.now().millisecond % 3 == 0;
-    return {
-      'status': isPending ? 'Pending' : 'Paid',
-      'dueAmount': isPending ? '125' : '0',
-      'nextDueDate': isPending ? 'Apr 15, 2024' : 'May 15, 2024',
-    };
-  }
-
   String _getStudentImage(Map<String, dynamic> student) {
     // Return a default student image or use profile picture if available
     final profilePicture = student['profilePicture'];
@@ -277,7 +281,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
         _dashboardStats = {
           'announcements': 3,
           'absences': 2,
-          'fee_notifications': 1,
         };
         
         _isLoading = false;
@@ -316,59 +319,16 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               icon: Stack(
                 children: [
                   const Icon(Icons.notifications_outlined, size: 28),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: _tertiaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints:
-                          const BoxConstraints(minWidth: 14, minHeight: 14),
-                      child: Text(
-                        '${(_dashboardStats['announcements'] ?? 0) + (_dashboardStats['absences'] ?? 0) + (_dashboardStats['fee_notifications'] ?? 0)}',
-                        style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
                 ],
               ),
               onPressed: () {
-                _showNotifications(context);
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(
+                    builder: (context) => ParentNotificationScreen(user: widget.user),
+                  )
+                );
               },
-            ),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.white,
-                child: Material(
-                  shape: const CircleBorder(),
-                  clipBehavior: Clip.hardEdge,
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      // Show parent profile
-                    },
-                    child: widget.user.profile.profilePicture.isNotEmpty
-                      ? CircleAvatar(
-                          backgroundImage: NetworkImage(widget.user.profile.profilePicture),
-                          radius: 16,
-                        )
-                      : Text(
-                          widget.user.profile.firstName[0],
-                          style: TextStyle(
-                              color: _primaryColor, fontWeight: FontWeight.bold),
-                        ),
-                  ),
-                ),
-              ),
             ),
           ],
         ),
@@ -420,10 +380,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               label: 'Attendance',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.payment),
-              label: 'Fees',
-            ),
-            BottomNavigationBarItem(
               icon: Icon(Icons.notifications),
               label: 'Notifications',
             ),
@@ -449,15 +405,12 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                 );
                 break;
               case 2:
-                Navigator.push(
+               Navigator.push(
                   context, 
                   MaterialPageRoute(
-                    builder: (context) => ParentFeeManagementScreen(user: widget.user),
+                    builder: (context) => ParentNotificationScreen(user: widget.user),
                   )
                 );
-                break;
-              case 3:
-                _showNotifications(context);
                 break;
             }
           },
@@ -576,20 +529,14 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     }
     
     return SizedBox(
-      height: 200,
+      height: 120,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: _studentsData.length,
         itemBuilder: (context, index) {
           final student = _studentsData[index];
-          final fees = student['fees'] as Map<String, dynamic>;
-          final feeStatus = fees['status'] as String;
-          final isFeePending = feeStatus == 'Pending';
           
           return GestureDetector(
-            onTap: () {
-              _showStudentDetails(context, student);
-            },
             child: Container(
               width: 300,
               margin: const EdgeInsets.only(right: 16),
@@ -657,30 +604,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildStudentStatCard(
-                            title: 'GPA',
-                            value: student['gpa'] as String,
-                            icon: Icons.workspace_premium,
-                            color: Colors.indigo,
-                          ),
-                          _buildStudentStatCard(
-                            title: 'Attendance',
-                            value: student['attendance'] as String,
-                            icon: Icons.event_available,
-                            color: Colors.green,
-                          ),
-                          _buildStudentStatCard(
-                            title: 'Fees',
-                            value: feeStatus,
-                            icon: Icons.payments,
-                            color: isFeePending ? Colors.orange : Colors.teal,
-                            isWarning: isFeePending,
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -691,852 +614,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       ),
     );
   }
-  
-  Widget _buildStudentStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    bool isWarning = false,
-  }) {
-    return Container(
-      width: 80,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-              color: isWarning ? Colors.orange : color,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-  
-  void _showStudentDetails(BuildContext context, Map<String, dynamic> student) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.9,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (_, controller) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 6),
-                    width: 40,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundImage: NetworkImage(student['image']),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                student['name'],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 20,
-                                ),
-                              ),
-                              Text(
-                                "${student['grade']} - Section ${student['section']}",
-                                style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: DefaultTabController(
-                      length: 3,
-                      child: Column(
-                        children: [
-                          TabBar(
-                            labelColor: _primaryColor,
-                            unselectedLabelColor: Colors.grey,
-                            indicatorColor: _accentColor,
-                            tabs: const [
-                              Tab(text: 'Performance'),
-                              Tab(text: 'Attendance'),
-                              Tab(text: 'Fees'),
-                            ],
-                          ),
-                          Expanded(
-                            child: TabBarView(
-                              children: [
-                                // Performance Tab
-                                _buildPerformanceTab(student),
-                                // Attendance Tab
-                                _buildAttendanceTab(student),
-                                // Fees Tab
-                                _buildFeesTab(student),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-  
-  Widget _buildPerformanceTab(Map<String, dynamic> student) {
-    // Sample subject data
-    final subjects = [
-      {'name': 'Mathematics', 'grade': 'A', 'score': 92, 'color': Colors.blue},
-      {'name': 'Science', 'grade': 'A-', 'score': 88, 'color': Colors.green},
-      {'name': 'English', 'grade': 'B+', 'score': 85, 'color': Colors.purple},
-      {'name': 'History', 'grade': 'A', 'score': 90, 'color': Colors.orange},
-      {'name': 'Physical Education', 'grade': 'A+', 'score': 95, 'color': Colors.teal},
-    ];
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Current GPA',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: _gradientColors,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    student['gpa'],
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 24,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Outstanding Performance',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${student['name'] as String} is performing well in most subjects with consistent attendance.',
-                      style: TextStyle(color: Colors.grey[700], fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Subject Grades',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: subjects.length,
-            itemBuilder: (context, index) {
-              final subject = subjects[index];
-              final subjectName = subject['name'] as String;
-              final subjectGrade = subject['grade'] as String;
-              final subjectScore = subject['score'] as int;
-              final subjectColor = subject['color'] as Color;
-              
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: subjectColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(Icons.book, color: subjectColor),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              subjectName,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 4),
-                            LinearProgressIndicator(
-                              value: subjectScore / 100,
-                              backgroundColor: Colors.grey[300],
-                              valueColor: AlwaysStoppedAnimation<Color>(subjectColor),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: subjectColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: subjectColor, width: 1),
-                        ),
-                        child: Text(
-                          subjectGrade,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: subjectColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // Close the bottom sheet first
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ParentPerformanceScreen(user: widget.user),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryColor,
-              ),
-              child: const Text('View Full Report', style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildAttendanceTab(Map<String, dynamic> student) {
-    // Sample monthly attendance data
-    final monthlyData = [
-      {'month': 'Jan', 'percentage': 95, 'present': 19, 'absent': 1},
-      {'month': 'Feb', 'percentage': 90, 'present': 18, 'absent': 2},
-      {'month': 'Mar', 'percentage': 100, 'present': 20, 'absent': 0},
-    ];
-    
-    // Sample recent attendance data
-    final recentAttendance = [
-      {'date': 'Mar 21, 2023', 'status': 'Present', 'color': Colors.green},
-      {'date': 'Mar 20, 2023', 'status': 'Present', 'color': Colors.green},
-      {'date': 'Mar 17, 2023', 'status': 'Present', 'color': Colors.green},
-      {'date': 'Mar 16, 2023', 'status': 'Absent', 'color': Colors.red},
-      {'date': 'Mar 15, 2023', 'status': 'Present', 'color:': Colors.green},
-    ];
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Overall Attendance',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildAttendanceStatCard(
-                title: 'Current',
-                value: student['attendance'] as String,
-                color: Colors.green,
-              ),
-              _buildAttendanceStatCard(
-                title: 'Present Days',
-                value: '57/60',
-                color: Colors.blue,
-              ),
-              _buildAttendanceStatCard(
-                title: 'Absent Days',
-                value: '3',
-                color: Colors.red,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Monthly Attendance',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  for (var month in monthlyData)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 40,
-                            child: Text(
-                              month['month'] as String,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                LinearProgressIndicator(
-                                  value: (month['percentage'] as int) / 100.0,
-                                  backgroundColor: Colors.grey[300],
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    (month['percentage'] as int) >= 90
-                                        ? Colors.green
-                                        : Colors.orange,
-                                  ),
-                                  minHeight: 10,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Present: ${month['present']} days, Absent: ${month['absent']} days',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Text(
-                            '${month['percentage']}%',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: (month['percentage'] as int) >= 90
-                                  ? Colors.green
-                                  : Colors.orange,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Recent Attendance',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: recentAttendance.length,
-            itemBuilder: (context, index) {
-              final attendance = recentAttendance[index];
-              final attendanceDate = attendance['date'] as String;
-              final attendanceStatus = attendance['status'] as String;
-              final attendanceColor = attendance['color'] as Color;
-              
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: attendanceColor.withOpacity(0.2),
-                    child: Icon(
-                      attendanceStatus == 'Present'
-                          ? Icons.check_circle
-                          : Icons.cancel,
-                      color: attendanceColor,
-                    ),
-                  ),
-                  title: Text(attendanceDate),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: attendanceColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      attendanceStatus,
-                      style: TextStyle(
-                        color: attendanceColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // Close the bottom sheet first
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ParentAttendanceScreen(user: widget.user),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryColor,
-              ),
-              child: const Text('View Full Attendance', style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildFeesTab(Map<String, dynamic> student) {
-    final fees = student['fees'] as Map<String, dynamic>;
-    final feeStatus = fees['status'] as String;
-    final dueAmount = fees['dueAmount'] as String;
-    final nextDueDate = fees['nextDueDate'] as String;
-    final isFeePending = feeStatus == 'Pending';
-    
-    // Sample fee records
-    final feeRecords = [
-      {
-        'term': 'Term 1 2023',
-        'amount': '500',
-        'date': 'Jan 15, 2023',
-        'status': 'Paid',
-        'color': Colors.green
-      },
-      {
-        'term': 'Term 2 2023',
-        'amount': '500',
-        'date': 'Mar 15, 2023',
-        'status': isFeePending ? 'Pending' : 'Paid',
-        'color': isFeePending ? Colors.orange : Colors.green
-      },
-      {
-        'term': 'Term 3 2023',
-        'amount': '500',
-        'date': 'May 15, 2023',
-        'status': 'Upcoming',
-        'color': Colors.grey
-      },
-    ];
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            color: isFeePending ? Colors.orange.shade50 : Colors.green.shade50,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        isFeePending ? Icons.warning_amber : Icons.check_circle,
-                        color: isFeePending ? Colors.orange : Colors.green,
-                        size: 32,
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isFeePending ? 'Payment Pending' : 'All Fees Paid',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: isFeePending ? Colors.orange.shade800 : Colors.green.shade800,
-                              ),
-                            ),
-                            Text(
-                              isFeePending
-                                  ? 'Due on $nextDueDate'
-                                  : 'Next payment due on $nextDueDate',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (isFeePending) ...[
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        // Navigate to payment screen
-                        Navigator.pushNamed(context, '/online_payment');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.payment, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Pay Now \$${dueAmount}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Payment History',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: feeRecords.length,
-            itemBuilder: (context, index) {
-              final record = feeRecords[index];
-              final termName = record['term'] as String;
-              final termAmount = record['amount'] as String;
-              final termDate = record['date'] as String;
-              final termStatus = record['status'] as String;
-              final termColor = record['color'] as Color;
-              
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: termColor.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          termStatus == 'Paid'
-                              ? Icons.receipt_long
-                              : termStatus == 'Pending'
-                                  ? Icons.pending
-                                  : Icons.schedule,
-                          color: termColor,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              termName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              'Due: $termDate',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '\$${termAmount}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: termColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              termStatus,
-                              style: TextStyle(
-                                color: termColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Fee Structure',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  _buildFeeItem('Tuition Fee', '400'),
-                  const Divider(),
-                  _buildFeeItem('Library Fee', '25'),
-                  const Divider(),
-                  _buildFeeItem('Lab Fee', '50'),
-                  const Divider(),
-                  _buildFeeItem('Extra-curricular', '25'),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Total Per Term',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        '\$500',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: _primaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (isFeePending) ...[
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // Close the bottom sheet first
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ParentFeeManagementScreen(user: widget.user),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.payment, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Pay Now \$${dueAmount}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton(
-              onPressed: () {
-                Navigator.pop(context); // Close the bottom sheet first
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ParentFeeManagementScreen(user: widget.user),
-                  ),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _primaryColor,
-              ),
-              child: const Text('View All Payment Details'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildFeeItem(String title, String amount) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title),
-          Text('\$$amount'),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildAttendanceStatCard({
-    required String title,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-  
-  // Update quick actions grid to include key parent functions
   Widget _buildQuickActionsGrid() {
     return GridView.count(
       shrinkWrap: true,
@@ -1557,7 +634,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               builder: (context) => ParentPerformanceScreen(user: widget.user),
             ),
           ),
-          badge: null,
         ),
         _buildDashboardCard(
           context: context,
@@ -1570,28 +646,19 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               builder: (context) => ParentAttendanceScreen(user: widget.user),
             ),
           ),
-          badge: _dashboardStats['absences']?.toString(),
-        ),
-        _buildDashboardCard(
-          context: context,
-          title: 'Fee Payment',
-          icon: Icons.receipt_long,
-          color: Colors.purple,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ParentFeeManagementScreen(user: widget.user),
-            ),
-          ),
-          badge: _dashboardStats['fee_notifications']?.toString(),
         ),
         _buildDashboardCard(
           context: context,
           title: 'School Updates',
           icon: Icons.notifications,
           color: Colors.red,
-          onTap: () => _showNotifications(context),
-          badge: _dashboardStats['announcements']?.toString(),
+           onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ParentNotificationScreen(user: widget.user),
+            ),
+          ),
+
         ),
       ],
     );
@@ -1603,7 +670,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
-    String? badge,
   }) {
     return Card(
       elevation: 3,
@@ -1617,64 +683,40 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
         onTap: onTap,
         splashColor: color.withOpacity(0.1),
         highlightColor: color.withOpacity(0.05),
-        child: Stack(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.white, color.withOpacity(0.05)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 26),
-                  ),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white, color.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            if (badge != null)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _tertiaryColor,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    badge,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: Icon(icon, color: color, size: 26),
               ),
-          ],
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
-    );
+      );
   }
   
   Widget _buildDrawer() {
@@ -1748,24 +790,17 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                     );
                   }, color: Colors.green),
                   
-                  _buildDrawerSectionHeader('FINANCES'),
-                  
-                  _buildDrawerItem(Icons.payment, 'Fee Management', () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ParentFeeManagementScreen(user: widget.user),
-                      ),
-                    );
-                  }, color: Colors.purple),
-                  
                   _buildDrawerSectionHeader('COMMUNICATION'),
                   
                   _buildDrawerItem(Icons.notifications_outlined, 'Notifications', () {
-                    Navigator.pop(context);
-                    _showNotifications(context);
-                  }, color: Colors.red, badge: '${(_dashboardStats['announcements'] ?? 0) + (_dashboardStats['absences'] ?? 0) + (_dashboardStats['fee_notifications'] ?? 0)}'),
+                   Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ParentNotificationScreen(user: widget.user),
+                      ),
+                    );
+                  }, color: Colors.red),
                 ],
               ),
             ),
@@ -1897,7 +932,6 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                           setState(() {
                             _dashboardStats['announcements'] = 0;
                             _dashboardStats['absences'] = 0;
-                            _dashboardStats['fee_notifications'] = 0;
                           });
                           Navigator.pop(context);
                         },
@@ -1911,46 +945,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                   child: ListView(
                     controller: scrollController,
                     children: [
-                      _buildNotificationItem(
-                        icon: Icons.announcement,
-                        color: Colors.blue,
-                        title: 'Annual Day Celebration',
-                        subtitle: 'School is organizing Annual Day on 25th December',
-                        timeAgo: '2h ago',
-                        index: 0
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.calendar_today,
-                        color: Colors.amber,
-                        title: 'John Smith was absent today',
-                        subtitle: 'Please provide reason for absence',
-                        timeAgo: '5h ago',
-                        index: 1
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.payment,
-                        color: Colors.purple,
-                        title: 'Fee Payment Due',
-                        subtitle: 'Last date for paying quarterly fee is next Monday',
-                        timeAgo: '1d ago',
-                        index: 2
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.grade,
-                        color: Colors.green,
-                        title: 'Term Exam Results Published',
-                        subtitle: 'Emily Smith scored A grade in Mathematics',
-                        timeAgo: '2d ago',
-                        index: 3
-                      ),
-                      _buildNotificationItem(
-                        icon: Icons.event,
-                        color: Colors.orange,
-                        title: 'Parent-Teacher Meeting',
-                        subtitle: 'Scheduled for this Saturday from 10 AM to 1 PM',
-                        timeAgo: '3d ago',
-                        index: 4
-                      ),
+                     
                     ],
                   ),
                 ),
@@ -1962,48 +957,8 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     );
   }
 
-  Widget _buildNotificationItem({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-    required String timeAgo,
-    required int index,
-  }) {
-    return TweenAnimationBuilder<double>(
-      duration: Duration(milliseconds: 400 + (index * 100)),
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(20 * (1 - value), 0),
-            child: child,
-          ),
-        );
-      },
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.2),
-          child: Icon(icon, color: color),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(subtitle),
-        trailing: Text(
-          timeAgo,
-          style: TextStyle(color: Colors.grey),
-        ),
-        onTap: () {
-          // Handle notification tap
-        },
-      ),
-    );
-  }
 
-  // Update the logout functionality to match teacher dashboard
+  // Update the logout functionality to match school admin dashboard
   void _handleLogout() {
     // Show confirmation dialog before logout
     showDialog(
@@ -2020,15 +975,119 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               child: Text('Cancel', style: TextStyle(color: _accentColor)),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
+                // Close dialog first to avoid context issues
                 Navigator.of(context).pop();
-                // Navigate to role selection screen after logout
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SchoolSelectionScreen(),
-                  ),
-                );
+                
+                // Capture the BuildContext and check if still mounted before showing dialog
+                if (mounted) {
+                  // Show loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (BuildContext dialogContext) => Dialog(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(color: _primaryColor),
+                            const SizedBox(height: 16),
+                            const Text('Logging out...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                try {
+                  // Delete FCM token from server
+                  final fcmService = FCMService();
+                  await fcmService.deleteFCMTokenFromServer(widget.user.id);
+                  
+                  // Clear user auth credentials
+                  await StorageUtil.setString('accessToken', '');
+                  await StorageUtil.setString('refreshToken', '');
+
+                  // Clear user profile information
+                  await StorageUtil.setString('userId', '');
+                  await StorageUtil.setString('userEmail', '');
+                  await StorageUtil.setString('userRole', '');
+                  await StorageUtil.setString('userFirstName', '');
+                  await StorageUtil.setString('userLastName', '');
+                  await StorageUtil.setString('userPhone', '');
+                  await StorageUtil.setString('userAddress', '');
+                  await StorageUtil.setString('userProfilePic', '');
+
+                  // Clear school-related information
+                  await StorageUtil.setString('schoolToken', '');
+                  await StorageUtil.setString('schoolName', '');
+                  await StorageUtil.setString('schoolId', '');
+                  await StorageUtil.setString('schoolAddress', '');
+                  await StorageUtil.setString('schoolPhone', '');
+
+                  // Set login status to false
+                  await StorageUtil.setBool('isLoggedIn', false);
+
+                  // Clear SharedPreferences as well
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.clear();
+                  
+                  // Store the navigation destination
+                  final navigationDestination = MaterialPageRoute(
+                    builder: (context) => const RoleSelectionScreen(
+                      schoolName: "",
+                      schoolToken: "",
+                      schoolAddress: "",
+                      schoolPhone: "",
+                    ),
+                  );
+                  
+                  // Navigate safely by first checking if still mounted
+                  if (mounted) {
+                    // Pop the loading dialog
+                    Navigator.of(context).pop();
+                    
+                    // Then navigate to the role selection screen
+                    Navigator.of(context).pushAndRemoveUntil(
+                      navigationDestination,
+                      (route) => false,
+                    );
+                  }
+                } catch (e) {
+                  print('⚠️ Error during logout: $e');
+                  
+                  // Store the navigation destination
+                  final navigationDestination = MaterialPageRoute(
+                    builder: (context) => const RoleSelectionScreen(
+                      schoolName: "",
+                      schoolToken: "",
+                      schoolAddress: "",
+                      schoolPhone: "",
+                    ),
+                  );
+                  
+                  // Navigate safely by first checking if still mounted
+                  if (mounted) {
+                    // Pop the loading dialog
+                    Navigator.of(context).pop();
+                    
+                    // Show error message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Logout error: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    
+                    // Then navigate to the role selection screen
+                    Navigator.of(context).pushAndRemoveUntil(
+                      navigationDestination,
+                      (route) => false,
+                    );
+                  }
+                }
               },
               child: const Text('Logout', style: TextStyle(color: Colors.red)),
             ),

@@ -3,6 +3,7 @@ import '../../models/user_model.dart';
 import '../../services/class_services.dart';
 import '../../services/attendance_service.dart';
 import 'package:intl/intl.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class TeacherAttendanceScreen extends StatefulWidget {
   final User user;
@@ -53,8 +54,8 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
   void initState() {
     super.initState();
     _selectedClass = widget.selectedClass;
-    _classService = ClassService(baseUrl: 'http://localhost:3000');
-    _attendanceService = AttendanceService(baseUrl: 'http://localhost:3000');
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl); // Use the constant for base URL
+    _attendanceService = AttendanceService(baseUrl: Constants.apiBaseUrl); // Use the constant for base URL
     _loadData();
   }
 
@@ -224,11 +225,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
             icon: const Icon(Icons.calendar_today),
             onPressed: _selectDate,
           ),
-          if (_selectedClass != null && _students.isNotEmpty)
-            IconButton(
-              icon: Icon(_hasExistingAttendance ? Icons.edit : Icons.save),
-              onPressed: _saveAttendance,
-            ),
+           
         ],
       ),
       body: _buildBody(),
@@ -469,7 +466,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                   OutlinedButton.icon(
                     onPressed: () => _selectClass(),
                     icon: const Icon(Icons.class_),
-                    label: const Text('Change Class'),
+                    label: const Text('Class'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _primaryColor,
                       side: BorderSide(color: _primaryColor),

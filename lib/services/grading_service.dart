@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import '../utils/storage_util.dart';
 
 class GradingService {
@@ -212,6 +210,66 @@ class GradingService {
     
     print('📊 Processed ${grades.length} grade entries for student');
     return grades;
+  }
+
+  /// Get grades for a specific student using /student/:studentId endpoint
+  Future<Map<String, dynamic>> getStudentGradesByStudentId(String studentId) async {
+    final token = await _getToken();
+    if (token == null) {
+      throw Exception('No authentication token available');
+    }
+
+    final schoolId = await StorageUtil.getString('schoolId');
+    if (schoolId == null) {
+      throw Exception('No school ID available');
+    }
+
+    print('📚 Fetching grades for student: $studentId using /student endpoint');
+    print('📚 Making API call: $baseUrl/student/$studentId');
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/student/$studentId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    print('📚 API Response status: ${response.statusCode}');
+    print('📚 API Response body: ${response.body}');
+
+    if (response.statusCode != 200) {
+      final errorData = jsonDecode(response.body);
+      throw Exception(errorData['message'] ?? 'Failed to load student grades');
+    }
+
+    final data = jsonDecode(response.body);
+    print('📚 Full student data with grades: $data');
+    
+    // Process the response to extract grade information
+    Map<String, dynamic> gradeData = {};
+    
+    if (data['success'] == true && data['data'] != null) {
+      final studentData = data['data'];
+      
+      // Check if the response contains grades information
+      if (studentData['grades'] != null) {
+        gradeData['grades'] = studentData['grades'];
+      } else if (studentData['academicReport'] != null && 
+                 studentData['academicReport']['grades'] != null) {
+        gradeData['grades'] = studentData['academicReport']['grades'];
+      }
+      
+      // Add other academic information if available
+      if (studentData['academicReport'] != null) {
+        gradeData['academicReport'] = studentData['academicReport'];
+      }
+      
+      gradeData['studentName'] = studentData['name'];
+      gradeData['studentId'] = studentData['_id'] ?? studentId;
+    }
+    
+    print('📚 Processed grade data: $gradeData');
+    return gradeData;
   }
 
   /// Helper method to calculate overall student average

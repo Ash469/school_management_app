@@ -3,7 +3,7 @@ import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/grading_service.dart';
 import '../../services/student_service.dart';
-import 'package:intl/intl.dart';
+import '../../utils/constants.dart'; // Import constants for base URL 
 
 class GradesScreen extends StatefulWidget {
   final User user;
@@ -51,8 +51,8 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _gradingService = GradingService(baseUrl: 'http://localhost:3000');
-    _studentService = StudentService(baseUrl: 'http://localhost:3000');
+    _gradingService = GradingService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
+    _studentService = StudentService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
     _loadThemeColors();
     _loadGradeData();
   }

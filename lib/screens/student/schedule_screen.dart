@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/schedule_service.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class StudentScheduleScreen extends StatefulWidget {
   final User? user;
@@ -37,7 +38,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> with Sing
     _selectedDay = DateTime.now();
 
     // Initialize services
-    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
+    _scheduleService = ScheduleService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
 
     // Load theme colors
     _loadThemeColors();

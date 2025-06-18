@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_theme.dart';
 import '../../services/student_service.dart';
-import '../../services/class_services.dart'; // Add import for ClassService
+import '../../services/class_services.dart';
+import '../../utils/constants.dart'; 
 
 class StudentManagementScreen extends StatefulWidget {
   const StudentManagementScreen({super.key});
@@ -43,8 +44,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   void initState() {
     super.initState();
     _loadThemeColors();
-    _studentService = StudentService(baseUrl: 'http://localhost:3000');
-    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _studentService = StudentService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
     _loadStudents();
     _preloadClasses(); // Preload classes instead of just loading them
   }
@@ -311,17 +312,17 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       appBar: AppBar(
         title: Text('Student Management', 
           style: TextStyle(
-            color: _primaryColor,
+            color: Colors.white ,
             fontWeight: FontWeight.bold,
           )
         ),
-        backgroundColor: Colors.white,
+         backgroundColor: _primaryColor,
         elevation: 2,
-        iconTheme: IconThemeData(color: _primaryColor),
+        iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.white, Colors.grey.shade50],
+              colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -331,14 +332,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshStudents,
-          ),
-          IconButton(
-            icon: Icon(Icons.notifications, color: _accentColor),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No new notifications'))
-              );
-            },
           ),
         ],
       ),
@@ -476,7 +469,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                             : _filteredStudents.isEmpty
                                 ? _buildNoMatchView()
                                 : ListView.builder(
-                                    padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 8),
+                                    padding: const EdgeInsets.only(top: 20, left: 8, right: 8, bottom: 100), // Added bottom padding
                                     itemCount: _filteredStudents.length,
                                     itemBuilder: (context, index) {
                                       final student = _filteredStudents[index];
@@ -2092,26 +2085,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   
                   const SizedBox(height: 16),
                   
-                  // Fee Payment section
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: CheckboxListTile(
-                      title: const Text("Fee Paid"),
-                      subtitle: const Text("Mark if the initial fee is already paid"),
-                      value: feePaid,
-                      onChanged: (bool? value) {
-                        setDialogState(() {
-                          feePaid = value ?? false;
-                        });
-                      },
-                      controlAffinity: ListTileControlAffinity.leading,
-                    ),
-                  ),
-                  
                   const SizedBox(height: 8),
                   const Text(
                     '* Required fields',
@@ -2256,6 +2229,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         'name': parent1NameController.text,
                         'email': parent1EmailController.text,
                         'phone': parent1PhoneController.text,
+                        // Password will be added by createStudent method using schoolSecretKey
                       }
                     ];
                     
@@ -2265,6 +2239,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         'name': parent2NameController.text,
                         'email': parent2EmailController.text,
                         'phone': parent2PhoneController.text,
+                        // Password will be added by createStudent method using schoolSecretKey
                       });
                     }
                     
@@ -2296,10 +2271,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     // Hide progress message and show success message
                     ScaffoldMessenger.of(context).hideCurrentSnackBar();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
+                      const SnackBar(
                         content: Text('Student and parent accounts created successfully! They can login with their email and the school secret key.'),
                         backgroundColor: Colors.green,
-                        duration: const Duration(seconds: 6),
+                        duration: Duration(seconds: 6),
                       ),
                     );
                   } catch (e) {
@@ -2510,6 +2485,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               children: [
                 if (records.isNotEmpty) ...[
                   const Divider(),
+                 
                   Expanded(
                     child: ListView.builder(
                       shrinkWrap: true,

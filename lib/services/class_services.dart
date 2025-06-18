@@ -253,7 +253,7 @@ class ClassService {
 
       final body = json.encode(updateData);
 
-      // Use the exact URL format that works: http://localhost:3000/classes/{id}?schoolId=...
+    
       final url = '$baseUrl/classes/$classId?schoolId=$schoolId';
       print('📊 Update class URL: $url');
       print('📊 Update class body: $body');

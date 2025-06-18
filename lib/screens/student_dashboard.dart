@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:school_app/screens/role_selection_screen.dart';
 import '../models/user_model.dart';
 import 'package:intl/intl.dart';
-import 'login_screen.dart';
 import '../utils/app_theme.dart'; 
 import 'student/schedule_screen.dart';
 import 'student/grades_screen.dart';
 import 'student/forms_screen.dart';
 import 'student/resource_library_screen.dart';
+import '../utils/storage_util.dart';
 import 'student/student_profile_screen.dart';
-import 'school_selection_screen.dart';
 import '../services/schedule_service.dart';
 import '../services/assignment_service.dart';
-import '../models/assignment_model.dart';
-import '../services/student_service.dart'; // Add import for StudentService
+import '../services/student_service.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'student/student_notifications_screen.dart'; 
+import '../services/fcm_service.dart'; 
+import '../utils/constants.dart'; 
 
 class StudentDashboard extends StatefulWidget {
   final User user;
@@ -49,8 +51,8 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
     );
     
     // Initialize services
-    _scheduleService = ScheduleService(baseUrl: 'http://localhost:3000');
-    _studentService = StudentService(baseUrl: 'http://localhost:3000'); // Initialize StudentService
+    _scheduleService = ScheduleService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
+    _studentService = StudentService(baseUrl: Constants.apiBaseUrl); // Initialize StudentService
     
     // Load theme colors like in teacher dashboard
     _loadThemeColors();
@@ -332,27 +334,6 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
               icon: Stack(
                 children: [
                   const Icon(Icons.notifications_outlined, size: 28),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: _tertiaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints:
-                          const BoxConstraints(minWidth: 14, minHeight: 14),
-                      child: Text(
-                        '$_notificationCount',
-                        style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
                 ],
               ),
               onPressed: () {
@@ -569,8 +550,8 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                   _buildDrawerItem(Icons.notifications_outlined, 'Notifications', () {
                     Navigator.pop(context);
                     _showNotifications(context);
-                  }, color: Colors.teal, badge: '$_notificationCount'),
-                  
+                  }, color: Colors.pinkAccent),
+
                   _buildDrawerSectionHeader('SERVICES'),
                   
                   _buildDrawerItem(Icons.description, 'Forms & Requests', () {
@@ -612,15 +593,120 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
                         child: Text('Cancel', style: TextStyle(color: _accentColor)),
                       ),
                       TextButton(
-                        onPressed: () {
+                        onPressed: () async {
+                          // Close dialog first to avoid context issues
                           Navigator.of(context).pop();
-                          // Navigate to login screen after logout
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SchoolSelectionScreen(),
-                            ),
-                          );
+
+                          // Store the current BuildContext
+                          final currentContext = context;
+                          
+                          // Check if still mounted before showing loading dialog
+                          if (mounted) {
+                            // Show loading indicator
+                            showDialog(
+                              context: currentContext,
+                              barrierDismissible: false,
+                              builder: (BuildContext dialogContext) => Dialog(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircularProgressIndicator(color: _primaryColor),
+                                      const SizedBox(height: 16),
+                                      const Text('Logging out...'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          try {
+                            // Delete FCM token from server
+                            final fcmService = FCMService();
+                            await fcmService.deleteFCMTokenFromServer(widget.user.id);
+                            
+                            // Clear user auth credentials
+                            await StorageUtil.setString('accessToken', '');
+                            await StorageUtil.setString('refreshToken', '');
+
+                            // Clear user profile information
+                            await StorageUtil.setString('userId', '');
+                            await StorageUtil.setString('userEmail', '');
+                            await StorageUtil.setString('userRole', '');
+                            await StorageUtil.setString('userFirstName', '');
+                            await StorageUtil.setString('userLastName', '');
+                            await StorageUtil.setString('userPhone', '');
+                            await StorageUtil.setString('userAddress', '');
+                            await StorageUtil.setString('userProfilePic', '');
+
+                            // Clear school-related information
+                            await StorageUtil.setString('schoolToken', '');
+                            await StorageUtil.setString('schoolName', '');
+                            await StorageUtil.setString('schoolId', '');
+                            await StorageUtil.setString('schoolAddress', '');
+                            await StorageUtil.setString('schoolPhone', '');
+
+                            // Set login status to false
+                            await StorageUtil.setBool('isLoggedIn', false);
+
+                            // Clear SharedPreferences as well
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.clear();
+                            
+                            // Close loading dialog if still mounted
+                            if (mounted) {
+                              Navigator.of(currentContext).pop();
+                            }
+                            
+                            // Navigate to role selection screen after logout
+                            if (mounted) {
+                              Navigator.pushReplacement(
+                                currentContext,
+                                MaterialPageRoute(
+                                  builder: (context) => const RoleSelectionScreen(
+                                    schoolName: "",
+                                    schoolToken: "",
+                                    schoolAddress: "",
+                                    schoolPhone: "",
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            print('⚠️ Error during logout: $e');
+                            
+                            // Create navigation destination once
+                            final navigationDestination = MaterialPageRoute(
+                              builder: (context) => const RoleSelectionScreen(
+                                schoolName: "",
+                                schoolToken: "",
+                                schoolAddress: "",
+                                schoolPhone: "",
+                              ),
+                            );
+                            
+                            // Only access context if still mounted
+                            if (mounted) {
+                              // Close loading dialog
+                              Navigator.of(currentContext).pop();
+                              
+                              // Show error message
+                              ScaffoldMessenger.of(currentContext).showSnackBar(
+                                SnackBar(
+                                  content: Text('Logout error: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              
+                              // Navigate
+                              Navigator.of(currentContext).pushAndRemoveUntil(
+                                navigationDestination,
+                                (route) => false,
+                              );
+                            }
+                          }
                         },
                         child: const Text('Logout', style: TextStyle(color: Colors.red)),
                       ),
@@ -1243,105 +1329,11 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
   }
   
   void _showNotifications(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StudentNotificationsScreen(user: widget.user),
       ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (context, scrollController) {
-            return Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 10, bottom: 6),
-                  width: 40,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Notifications',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _notificationCount = 0;
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Mark all as read'),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: 3,
-                    itemBuilder: (context, index) {
-                      final icons = [Icons.announcement, Icons.assignment, Icons.payment];
-                      final titles = ['New announcement posted', 'New homework assigned', 'Fee payment reminder'];
-                      final subtitles = [
-                        'School will be closed on Monday for national holiday',
-                        'Math homework due on Friday',
-                        'Last date to pay fees is 15th of this month'
-                      ];
-                      final colors = [Colors.blue, Colors.green, Colors.red];
-                      
-                      return TweenAnimationBuilder<double>(
-                        duration: Duration(milliseconds: 400 + (index * 100)),
-                        tween: Tween<double>(begin: 0.0, end: 1.0),
-                        builder: (context, value, child) {
-                          return Opacity(
-                            opacity: value,
-                            child: Transform.translate(
-                              offset: Offset(20 * (1 - value), 0),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: colors[index].withOpacity(0.2),
-                            child: Icon(icons[index], color: colors[index]),
-                          ),
-                          title: Text(titles[index]),
-                          subtitle: Text(subtitles[index]),
-                          trailing: Text(
-                            '${index + 1}h ago',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                          onTap: () {
-                            // Handle notification tap
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
     );
   }
 }

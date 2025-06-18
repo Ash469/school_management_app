@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../../services/calendar_service.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class CalendarEvent {
   final String id;
@@ -158,7 +159,7 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
     _selectedEvents = ValueNotifier(_getEventsForDay(_selectedDay!));
     
     // Initialize calendar service with your API base URL
-    _calendarService = CalendarService(baseUrl: 'http://localhost:3000');
+    _calendarService = CalendarService(baseUrl:  Constants.apiBaseUrl);
     
     // Load events from API
     _loadEvents();
@@ -507,10 +508,6 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
             onPressed: _loadEvents,
             tooltip: 'Refresh Calendar',
           ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareCalendar,
-          ),
         ],
       ),
       body: _isLoading 
@@ -852,7 +849,7 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
   Widget _buildCategoryFilters() {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -871,7 +868,7 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -916,14 +913,14 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           const Divider(),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Column(
             children: EventCategory.values.map((category) {
               final bool isSelected = _selectedCategories.contains(category);
               return Container(
-                margin: const EdgeInsets.only(bottom: 8),
+                margin: const EdgeInsets.only(bottom: 6),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   color: isSelected ? category.color.withOpacity(0.1) : Colors.transparent,
@@ -971,7 +968,7 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
               );
             }).toList(),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(

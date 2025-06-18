@@ -5,6 +5,7 @@ import '../../services/assignment_service.dart';
 import '../../services/teacher_service.dart';
 import '../../services/class_services.dart';
 import 'package:intl/intl.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class TeacherAssignmentsScreen extends StatefulWidget {
   final User user;
@@ -54,8 +55,8 @@ class _TeacherAssignmentsScreenState extends State<TeacherAssignmentsScreen> wit
     super.initState();
     _tabController = TabController(length: 2, vsync: this); // Changed from 3 to 2
     _selectedClass = widget.selectedClass;
-    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
-    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _teacherService = TeacherService(baseUrl: Constants.apiBaseUrl);
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl);
     _loadData();
   }
   

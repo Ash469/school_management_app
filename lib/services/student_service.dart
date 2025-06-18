@@ -274,15 +274,15 @@ class StudentService {
         'studentId': studentId,
         'classId': classId,
         'schoolId': schoolId,
+        'gender':gender,
+        'dob': dob,
+        'phone':phone,
         'parents': processedParents,
       };
 
       // Add optional fields if provided
-      if (dob != null && dob.isNotEmpty) signupData['dob'] = dob;
-      if (gender != null && gender.isNotEmpty) signupData['gender'] = gender;
+      
       if (address != null && address.isNotEmpty) signupData['address'] = address;
-      if (phone != null && phone.isNotEmpty) signupData['phone'] = phone;
-      signupData['feePaid'] = feePaid;
 
       final body = json.encode(signupData);
 
@@ -470,6 +470,104 @@ class StudentService {
     } catch (e) {
       print('👨‍🎓 Error getting student progress: $e');
       throw Exception('Error getting student progress: $e');
+    }
+  }
+
+  /// Get all students (alternative method)
+  Future<List<Map<String, dynamic>>> getAllStudentsAlt({String? classId}) async {
+    try {
+      final headers = await _getHeaders();
+      final schoolId = await _getSchoolId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      // Build URL with optional classId filter
+      String url = '$baseUrl/students?schoolId=$schoolId';
+      if (classId != null && classId.isNotEmpty) {
+        url += '&classId=$classId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: headers,
+      );
+
+      print('👨‍🎓 Student response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        
+        // Handle the new response format with success and data fields
+        if (jsonResponse is Map<String, dynamic> && 
+            jsonResponse.containsKey('success') && 
+            jsonResponse.containsKey('data')) {
+          final List<dynamic> data = jsonResponse['data'];
+          return data.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        // Handle the old format where response is directly an array
+        if (jsonResponse is List) {
+          return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        throw Exception('Unexpected response format');
+      } else {
+        print('👨‍🎓 Error response: ${response.body}');
+        throw Exception('Failed to load students: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('👨‍🎓 Error getting students: $e');
+      throw Exception('Error getting students: $e');
+    }
+  }
+
+  /// Get students by parent ID
+  Future<List<Map<String, dynamic>>> getStudentsByParentId(String parentId) async {
+    try {
+      final headers = await _getHeaders();
+      final schoolId = await _getSchoolId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      final url = '$baseUrl/students/par/$parentId?schoolId=$schoolId';
+      print('👨‍👩‍👧‍👦 Getting students for parent ID: $parentId with schoolId: $schoolId');
+      print('👨‍👩‍👧‍👦 URL: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: headers,
+      );
+
+      print('👨‍👩‍👧‍👦 Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        
+        // Handle the response format with success and data fields
+        if (jsonResponse is Map<String, dynamic> && 
+            jsonResponse.containsKey('success') && 
+            jsonResponse.containsKey('data')) {
+          final List<dynamic> data = jsonResponse['data'];
+          return data.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        // Handle direct response format
+        if (jsonResponse is List) {
+          return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        throw Exception('Unexpected response format');
+      } else {
+        print('👨‍👩‍👧‍👦 Error response: ${response.body}');
+        throw Exception('Failed to load students for parent: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('👨‍👩‍👧‍👦 Error getting students for parent: $e');
+      throw Exception('Error getting students for parent: $e');
     }
   }
 }

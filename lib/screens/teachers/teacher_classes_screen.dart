@@ -5,6 +5,7 @@ import '../../services/class_services.dart';
 import 'teacher_assignments_screen.dart';
 import 'teacher_attendance_screen.dart';
 import 'teacher_grading_screen.dart';
+import '../../utils/constants.dart'; // Import constants for base URL
 
 class TeacherClassesScreen extends StatefulWidget {
   final User user;
@@ -42,8 +43,8 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
   @override
   void initState() {
     super.initState();
-    _teacherService = TeacherService(baseUrl: 'http://localhost:3000');
-    _classService = ClassService(baseUrl: 'http://localhost:3000');
+    _teacherService = TeacherService(baseUrl: Constants.apiBaseUrl);
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl);
     _loadClasses();
   }
 
@@ -165,17 +166,6 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadClasses,
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('No new notifications'),
-                  backgroundColor: _primaryColor,
-                )
-              );
-            },
           ),
         ],
       ),
@@ -301,21 +291,6 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: classColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      classData['id'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -449,7 +424,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
                       ),
                     ),
                     icon: Icon(Icons.assignment, color: _primaryColor),
-                    label: Text('Assignments', style: TextStyle(color: _primaryColor)),
+                    label: Text('HomeWork', style: TextStyle(color: _primaryColor)),
                     style: TextButton.styleFrom(
                       foregroundColor: _primaryColor,
                     ),
@@ -602,7 +577,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
                         ),
                       ),
                       icon: const Icon(Icons.assignment),
-                      label: const Text('Assignments'),
+                      label: const Text('Homwework'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _primaryColor,
                         foregroundColor: Colors.white,
