@@ -1,74 +1,30 @@
 import 'dart:convert';
-import 'dart:math' as Math;
 import 'package:http/http.dart' as http;
-import '../utils/storage_util.dart';
-import '../services/student_service.dart';  // Import StudentService
+import '../services/student_service.dart';  
+import '../services/api_auth_service.dart';
 
 class ClassService {
   final String baseUrl;
+  final ApiAuthService _authService = ApiAuthService();
 
   ClassService({required this.baseUrl});
 
-  Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    // Get directly from StorageUtil
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<Map<String, String>> _getHeaders({bool jsonContent = true}) async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    final headers = <String, String>{
-      'Authorization': 'Bearer $token',
-    };
-
-    if (jsonContent) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
-  }
-
   Future<List<Map<String, dynamic>>> getAllClasses() async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
-
-      print('📊 Making API request for classes with schoolId: $schoolId');
-      print('📊 Headers: $headers');
-
-      // Modified to explicitly include schoolId in the query parameters
       final url = '$baseUrl/classes?schoolId=$schoolId';
-      print('📊 URL: $url');
 
       final response = await http.get(
         Uri.parse(url),
         headers: headers,
       );
-
-      print('📊 Response status: ${response.statusCode}');
       if (response.statusCode == 200) {
         print('📊 Response body preview: ${response.body}');
-        // Parse the outer JSON structure first
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
         
         List<dynamic> data;
@@ -102,8 +58,8 @@ class ClassService {
 
   Future<Map<String, dynamic>> getClassById(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null) {
         throw Exception('School ID not found');
@@ -175,8 +131,8 @@ class ClassService {
     List<String> students = const [],
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       final body = json.encode({
         'name': name,
@@ -235,8 +191,8 @@ class ClassService {
     List<String>? studentIds,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -255,8 +211,6 @@ class ClassService {
 
     
       final url = '$baseUrl/classes/$classId?schoolId=$schoolId';
-      print('📊 Update class URL: $url');
-      print('📊 Update class body: $body');
       
       final response = await http.put(
         Uri.parse(url),
@@ -290,8 +244,8 @@ class ClassService {
 
   Future<void> deleteClass(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
       final url = '$baseUrl/classes/$classId?schoolId=$schoolId';
       print('📊 Delete URL: $url');
       
@@ -310,8 +264,8 @@ class ClassService {
 
   Future<List<Map<String, dynamic>>> getClassTeachers(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -356,8 +310,8 @@ class ClassService {
 
   Future<List<Map<String, dynamic>>> setClassTeachers(String classId, List<String> teacherIds) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -409,8 +363,8 @@ class ClassService {
 
   Future<List<String>> getClassSubjects(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -461,8 +415,8 @@ class ClassService {
 
   Future<List<String>> setClassSubjects(String classId, List<String> subjects) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -512,32 +466,11 @@ class ClassService {
     }
   }
 
-  Future<Map<String, dynamic>> getClassAnalytics(String classId) async {
-    try {
-      // Reuse the existing getClassById method to fetch class data
-      final classData = await getClassById(classId);
-      
-      // Extract analytics data from the response
-      if (classData.containsKey('analytics')) {
-        return classData['analytics'] as Map<String, dynamic>;
-      } else {
-        // Return default analytics object if not found
-        return {
-          'attendancePct': 0,
-          'avgGrade': 0, 
-          'passPct': 0
-        };
-      }
-    } catch (e) {
-      print('📊 Error getting class analytics: $e');
-      throw Exception('Error getting class analytics: $e');
-    }
-  }
 
   Future<List<Map<String, dynamic>>> getClassStudents(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -583,8 +516,8 @@ class ClassService {
 
   Future<List<Map<String, dynamic>>> setClassStudents(String classId, List<String> studentIds) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -635,10 +568,9 @@ class ClassService {
     }
   }
 
-  // New method to get all students using StudentService
   Future<List<Map<String, dynamic>>> getAllStudentsForClass(String classId) async {
     try {
-      final schoolId = await _getSchoolId();
+      final schoolId = await _authService.getSchoolId();
       
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -661,6 +593,20 @@ class ClassService {
     } catch (e) {
       print('📊 Error getting students for class: $e');
       throw Exception('Error getting students for class: $e');
+    }
+  }
+
+  Future<String> getClassNameById(String classId) async {
+    try {
+      final classData = await getClassById(classId);
+      if (classData.containsKey('name')) {
+        return classData['name'] as String;
+      } else {
+        throw Exception('Class name not found for ID: $classId');
+      }
+    } catch (e) {
+      print('📊 Error getting class name: $e');
+      throw Exception('Error getting class name: $e');
     }
   }
 }

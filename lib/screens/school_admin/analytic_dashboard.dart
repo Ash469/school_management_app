@@ -4,7 +4,9 @@ import '../../services/class_services.dart';
 import '../../utils/constants.dart'; // Import constants for base URL
 
 class AnalyticsDashboard extends StatefulWidget {
-  const AnalyticsDashboard({super.key});
+  final String? preselectedClassId;
+  
+  const AnalyticsDashboard({super.key, this.preselectedClassId});
 
   @override
   State<AnalyticsDashboard> createState() => _AnalyticsDashboardState();
@@ -64,20 +66,29 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard>
     _loadInitialData();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _fadeController.dispose();
-    _slideController.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadInitialData() async {
     try {
       final classes = await _classService.getAllClasses();
       setState(() {
         _classes = classes;
         _isLoading = false;
+        
+        // Use preselected class ID if provided
+        if (widget.preselectedClassId != null) {
+          _selectedClassId = widget.preselectedClassId;
+          _loadClassSubjects();
+          _checkCanLoadAnalytics();
+          
+          // If it's a preselected class, initialize with current month date range
+          final now = DateTime.now();
+          _startDate = DateTime(now.year, now.month, 1);
+          _endDate = DateTime(now.year, now.month + 1, 0);
+          
+          // Load analytics data if we have the class ID
+          if (_canLoadAnalytics) {
+            _loadAttendanceData();
+          }
+        }
       });
     } catch (e) {
       setState(() {
@@ -88,6 +99,31 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard>
       );
     }
   }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
+    super.dispose();
+  }
+
+  // Future<void> _loadInitialData() async {
+  //   try {
+  //     final classes = await _classService.getAllClasses();
+  //     setState(() {
+  //       _classes = classes;
+  //       _isLoading = false;
+  //     });
+  //   } catch (e) {
+  //     setState(() {
+  //       _isLoading = false;
+  //     });
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Error loading classes: $e')),
+  //     );
+  //   }
+  // }
 
   void _checkCanLoadAnalytics() {
     setState(() {

@@ -5,7 +5,10 @@ import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/student_service.dart';
 import '../../services/image_service.dart';
-import '../../utils/constants.dart'; // Import constants for base URL
+import '../../services/grading_service.dart'; // Import GradeService
+import '../../services/attendance_service.dart'; // Import AttendanceService
+import '../../services/api_service.dart'; // Import ApiService
+import '../../utils/constants.dart'; 
 
 class StudentProfileScreen extends StatefulWidget {
   final User user;
@@ -23,10 +26,17 @@ class StudentProfileScreen extends StatefulWidget {
 
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
   late StudentService _studentService;
+  late GradingService _gradeService; // Add GradingService instance
+  late AttendanceService _attendanceService; // Add AttendanceService instance
   late ImageService _imageService;
+  late ApiService _apiService; // Add ApiService instance
   Map<String, dynamic>? _studentData;
+  List<Map<String, dynamic>> _grades = []; // Store grades
+  Map<String, dynamic>? _attendanceData; // Store attendance data
   bool _isLoading = true;
   bool _isUploadingImage = false;
+  bool _isLoadingGrades = true; // Track grades loading state
+  bool _isLoadingAttendance = true; // Track attendance loading state
   String? _error;
   String? _profileImageUrl;
 
@@ -34,9 +44,14 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   void initState() {
     super.initState();
     _studentService = StudentService(baseUrl: Constants.apiBaseUrl);
+    _gradeService = GradingService(baseUrl: Constants.apiBaseUrl); // Initialize GradeService
+    _attendanceService = AttendanceService(baseUrl: Constants.apiBaseUrl); // Initialize AttendanceService
     _imageService = ImageService();
+    _apiService = ApiService(Constants.apiBaseUrl); // Initialize ApiService
     _profileImageUrl = widget.user.profile.profilePicture;
     _fetchStudentData();
+    _fetchStudentGrades();
+    _fetchStudentAttendance(); 
   }
 
   Future<void> _fetchStudentData() async {
@@ -59,6 +74,44 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
       setState(() {
         _error = e.toString();
         _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchStudentGrades() async {
+    try {
+      setState(() {
+        _isLoadingGrades = true;
+      });
+
+      final grades = await _gradeService.getStudentGrades(widget.studentId ?? widget.user.id);
+      setState(() {
+        _grades = grades;
+        _isLoadingGrades = false;
+      });
+    } catch (e) {
+      print('Error fetching grades: $e');
+      setState(() {
+        _isLoadingGrades = false;
+      });
+    }
+  }
+
+  Future<void> _fetchStudentAttendance() async {
+    try {
+      setState(() {
+        _isLoadingAttendance = true;
+      });
+
+      final attendance = await _attendanceService.getStudentAttendance(widget.studentId ?? widget.user.id);
+      setState(() {
+        _attendanceData = attendance;
+        _isLoadingAttendance = false;
+      });
+    } catch (e) {
+      print('Error fetching attendance: $e');
+      setState(() {
+        _isLoadingAttendance = false;
       });
     }
   }
@@ -133,6 +186,34 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
     }
   }
 
+  Future<void> _resetPassword() async {
+    try {
+      final response = await _apiService.forgotPassword(widget.user.email);
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send reset email: ${response.body}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -143,7 +224,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _fetchStudentData,
           ),
-         
+          IconButton(
+            icon: const Icon(Icons.lock_reset),
+            onPressed: _resetPassword, // Add reset password button
+            tooltip: 'Reset Password',
+          ),
         ],
       ),
       body: _buildBody(),
@@ -209,12 +294,14 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   }
 
   Widget _buildProfileHeader(BuildContext context, Map<String, dynamic> studentData) {
-    final classData = studentData['classId'] as Map<String, dynamic>?;
+    final classData = studentData['classId'] as Map<String, dynamic>?; // Updated to handle object format
+    final schoolData = studentData['schoolId'] as Map<String, dynamic>?; // Added to handle school details
     final studentName = studentData['name'] ?? 'Unknown Student';
     final studentId = studentData['studentId'] ?? 'N/A';
     final gradeSection = classData != null 
         ? 'Grade ${classData['grade']}-${classData['section']}'
         : 'No Class Assigned';
+    final schoolName = schoolData?['name'] ?? 'Unknown School'; // Extract school name
 
     return Container(
       width: double.infinity,
@@ -298,15 +385,24 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               fontSize: 16,
             ),
           ),
+          const SizedBox(height: 10),
+          Text(
+            'School: $schoolName', // Display school name
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 16,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildInfoSection(BuildContext context, Map<String, dynamic> studentData) {
-    final classData = studentData['classId'] as Map<String, dynamic>?;
-    final academicReport = studentData['academicReport'] as Map<String, dynamic>?;
-    
+    final classData = studentData['classId'] as Map<String, dynamic>?; // Updated to handle object format
+    final schoolData = studentData['schoolId'] as Map<String, dynamic>?; // Added to handle school details
+   
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -318,7 +414,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             _buildInfoRow('Name', studentData['name'] ?? 'N/A'),
             _buildInfoRow('Email', studentData['email'] ?? 'N/A'),
             _buildInfoRow('Gender', studentData['gender'] ?? 'Not specified'),
-            _buildInfoRow('Fee Status', studentData['feePaid'] == true ? 'Paid' : 'Pending'),
           ]),
           
           const SizedBox(height: 20),
@@ -328,32 +423,59 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             _buildInfoRow('Grade', classData?['grade']?.toString() ?? 'N/A'),
             _buildInfoRow('Section', classData?['section'] ?? 'N/A'),
             _buildInfoRow('Academic Year', classData?['year']?.toString() ?? 'N/A'),
-            _buildInfoRow('Attendance', '${academicReport?['attendancePct'] ?? 0}%'),
+            _buildAttendanceRow(), // Add attendance row
           ]),
           
-          if (academicReport?['grades'] != null && (academicReport!['grades'] as List).isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _buildSectionTitle('Academic Performance'),
-            _buildInfoCard([
-              for (var grade in academicReport['grades'] as List)
-                _buildInfoRow(
-                  grade['subject'] ?? 'Subject', 
-                  '${grade['score'] ?? 'N/A'} (${grade['grade'] ?? 'N/A'})'
-                ),
-            ]),
-          ],
+          const SizedBox(height: 20),
+          _buildSectionTitle('Academic Performance'),
+          _buildAcademicPerformanceSection(), // Add academic performance section
           
           const SizedBox(height: 20),
           _buildSectionTitle('System Information'),
           _buildInfoCard([
             _buildInfoRow('Created', _formatDate(studentData['createdAt'])),
             _buildInfoRow('Last Updated', _formatDate(studentData['updatedAt'])),
-            _buildInfoRow('School ID', studentData['schoolId'] ?? 'N/A'),
+            _buildInfoRow('School Name', schoolData?['name'] ?? 'N/A'), // Display school name
           ]),
           
           const SizedBox(height: 30),
         ],
       ),
+    );
+  }
+
+  Widget _buildAcademicPerformanceSection() {
+    if (_isLoadingGrades) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_grades.isEmpty) {
+      return const Center(child: Text('No academic performance data available'));
+    }
+
+    return _buildInfoCard([
+      for (var grade in _grades)
+        _buildInfoRow(
+          grade['subject'] ?? 'Subject',
+          '${grade['percentage']?.toStringAsFixed(2) ?? 'N/A'}%',
+        ),
+    ]);
+  }
+
+  Widget _buildAttendanceRow() {
+    if (_isLoadingAttendance) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final presentCount = _attendanceData?['summary']?['present'] ?? 'N/A';
+    final absentCount = _attendanceData?['summary']?['absent'] ?? 'N/A';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow('Days Present', presentCount.toString()),
+        _buildInfoRow('Days Absent', absentCount.toString()),
+      ],
     );
   }
 

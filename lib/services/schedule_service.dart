@@ -1,51 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
 
 class ScheduleService {
   final String baseUrl;
-
+  final ApiAuthService _authService = ApiAuthService();
   ScheduleService({required this.baseUrl});
 
-  Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    // Get directly from StorageUtil
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<Map<String, String>> _getHeaders({bool jsonContent = true}) async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    final headers = <String, String>{
-      'Authorization': 'Bearer $token',
-    };
-
-    if (jsonContent) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
-  }
+ 
 
   Future<List<Map<String, dynamic>>> getAllSchedules() async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -89,8 +56,8 @@ class ScheduleService {
 
   Future<Map<String, dynamic>> getScheduleById(String scheduleId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null) {
         throw Exception('School ID not found');
@@ -147,8 +114,8 @@ class ScheduleService {
 
   Future<List<Map<String, dynamic>>> getSchedulesByClassId(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -211,8 +178,8 @@ class ScheduleService {
     required List<Map<String, dynamic>> periods,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       final body = json.encode({
         'classId': classId,
@@ -254,8 +221,8 @@ class ScheduleService {
     List<Map<String, dynamic>>? periods,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -301,8 +268,8 @@ class ScheduleService {
 
   Future<void> deleteSchedule(String scheduleId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
       final url = '$baseUrl/schedules/$scheduleId?schoolId=$schoolId';
       print('📅 Delete URL: $url');
       
@@ -322,8 +289,8 @@ class ScheduleService {
   /// Get schedule for a specific teacher
   Future<Map<String, dynamic>?> getTeacherSchedule(String teacherId) async {
     try {
-      final headers = await _getHeaders();
-      
+      final headers = await _authService.getHeaders();
+
       print('📅 Getting teacher schedule for ID: $teacherId');
       
       final url = '$baseUrl/schedules/teacher/$teacherId';
@@ -359,9 +326,9 @@ class ScheduleService {
   /// Get schedule for a specific student
   Future<Map<String, dynamic>?> getStudentSchedule(String studentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       print('📅 Getting student schedule for ID: $studentId with schoolId: $schoolId');
       
       final url = '$baseUrl/schedules/student/$studentId${schoolId != null ? '?schoolId=$schoolId' : ''}';

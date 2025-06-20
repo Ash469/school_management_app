@@ -394,512 +394,157 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
   }
 
   // Show dialog for sending message to a class
-  void _showClassMessageDialog() async {
-    final messageController = TextEditingController();
-    DateTime scheduleDate = DateTime.now();
-    String? selectedClassId;
-    Map<String, String> classMap = {};
-    bool isLoading = true;
-
-    try {
-      // Load classes
-      final classes = await _classService.getAllClasses();
-      for (var classData in classes) {
-        if (classData.containsKey('_id') && classData.containsKey('name')) {
-          classMap[classData['_id']] = classData['name'];
-        }
-      }
-      isLoading = false;
-    } catch (e) {
-      print('Error loading classes: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading classes: $e')),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.purpleAccent.shade200,
-                  child: const Icon(Icons.class_, color: Colors.white),
+  void _showClassMessageDialog() {
+    // Navigate to class selection screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecipientSelectionScreen(
+          title: 'Select Class',
+          recipientType: 'class',
+          service: _classService,
+          icon: Icons.class_,
+          iconBackgroundColor: Colors.purpleAccent.shade200,
+          onRecipientSelected: (String classId, String className) {
+            // Show message composition dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MessageCompositionScreen(
+                  recipientType: 'Class',
+                  recipientId: classId,
+                  recipientName: className,
+                  iconData: Icons.class_,
+                  iconColor: Colors.purpleAccent.shade200,
+                  onSendMessage: (message) {
+                    _sendNotification(
+                      type: 'Class',
+                      message: message,
+                      classId: classId,
+                    );
+                  },
                 ),
-                const SizedBox(width: 12),
-                const Text('Message to Class'),
-              ],
-            ),
-            content: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
-                            labelText: 'Select Class',
-                            border: OutlineInputBorder(),
-                          ),
-                          hint: const Text('Choose a class'),
-                          value: selectedClassId,
-                          items: classMap.entries.map((entry) {
-                            return DropdownMenuItem<String>(
-                              value: entry.key,
-                              child: Text(entry.value),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              selectedClassId = value;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: messageController,
-                          maxLines: 5,
-                          decoration: const InputDecoration(
-                            labelText: 'Message',
-                            hintText: 'Enter your message to the class',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purpleAccent.shade200,
-                ),
-                onPressed: isLoading || selectedClassId == null
-                    ? null
-                    : () async {
-                        if (messageController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please enter a message')),
-                          );
-                          return;
-                        }
-                        
-                        Navigator.pop(context);
-                        _sendNotification(
-                          type: 'Class',
-                          message: messageController.text,
-                          classId: selectedClassId,
-                          scheduleDate: scheduleDate,
-                        );
-                      },
-                child: const Text('Send to Class', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
   // Show dialog for sending message to a teacher
-  void _showTeacherMessageDialog() async {
-    final messageController = TextEditingController();
-    String? selectedTeacherId;
-    Map<String, String> teacherMap = {};
-    bool isLoading = true;
-
-    try {
-      // Load teachers using the TeacherService
-      final teachers = await _teacherService.getAllTeachers();
-      print('Found ${teachers.length} teachers');
-      
-      for (var teacher in teachers) {
-        if (teacher.containsKey('_id') && teacher.containsKey('name')) {
-          teacherMap[teacher['_id']] = teacher['name'];
-          print('Added teacher: ${teacher['name']} with ID: ${teacher['_id']}');
-        }
-      }
-      isLoading = false;
-    } catch (e) {
-      print('Error loading teachers: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading teachers: $e')),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.blueAccent,
-                  child: const Icon(Icons.school, color: Colors.white),
+  void _showTeacherMessageDialog() {
+    // Navigate to teacher selection screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecipientSelectionScreen(
+          title: 'Select Teacher',
+          recipientType: 'teacher',
+          service: _teacherService,
+          icon: Icons.school,
+          iconBackgroundColor: Colors.blueAccent,
+          onRecipientSelected: (String teacherId, String teacherName) {
+            // Show message composition dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MessageCompositionScreen(
+                  recipientType: 'Teacher',
+                  recipientId: teacherId,
+                  recipientName: teacherName,
+                  iconData: Icons.school,
+                  iconColor: Colors.blueAccent,
+                  onSendMessage: (message) {
+                    _sendNotification(
+                      type: 'Teacher',
+                      message: message,
+                      teacherId: teacherId,
+                    );
+                  },
                 ),
-                const SizedBox(width: 12),
-                const Text('Message to Teacher'),
-              ],
-            ),
-            content: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (teacherMap.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Text(
-                              'No teachers found. Please add teachers first.',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          )
-                        else
-                          DropdownButtonFormField<String>(
-                            decoration: const InputDecoration(
-                              labelText: 'Select Teacher',
-                              border: OutlineInputBorder(),
-                            ),
-                            hint: const Text('Choose a teacher'),
-                            value: selectedTeacherId,
-                            items: teacherMap.entries.map((entry) {
-                              return DropdownMenuItem<String>(
-                                value: entry.key,
-                                child: Text(entry.value),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                selectedTeacherId = value;
-                                print('Selected teacher ID: $selectedTeacherId');
-                              });
-                            },
-                          ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: messageController,
-                          maxLines: 5,
-                          decoration: const InputDecoration(
-                            labelText: 'Message',
-                            hintText: 'Enter your message to the teacher',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                ),
-                onPressed: isLoading || teacherMap.isEmpty || selectedTeacherId == null
-                    ? null
-                    : () async {
-                        if (messageController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please enter a message')),
-                          );
-                          return;
-                        }
-                        
-                        Navigator.pop(context);
-                        
-                        // Show loading indicator
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (context) => const Center(child: CircularProgressIndicator()),
-                        );
-                        
-                        try {
-                          // Use the specific teacher notification endpoint
-                          final success = await _notificationService.sendTeacherNotification(
-                            teacherId: selectedTeacherId!,
-                            message: messageController.text,
-                     
-                          );
-                          
-                          // Close loading dialog
-                          Navigator.pop(context);
-                          
-                          if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Message sent to teacher successfully')),
-                            );
-                            _fetchNotifications(); // Refresh the list
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Failed to send message to teacher')),
-                            );
-                          }
-                        } catch (e) {
-                          // Close loading dialog
-                          Navigator.pop(context);
-                          
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: ${e.toString()}')),
-                          );
-                        }
-                      },
-                child: const Text('Send to Teacher', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
   // Show dialog for sending message to a student
-  void _showStudentMessageDialog() async {
-    final messageController = TextEditingController();
-    DateTime scheduleDate = DateTime.now();
-    String? selectedStudentId;
-    Map<String, String> studentMap = {};
-    bool isLoading = true;
-
-    try {
-      // Load students
-      final students = await _studentService.getAllStudents();
-      for (var student in students) {
-        if (student.containsKey('_id') && student.containsKey('name')) {
-          studentMap[student['_id']] = student['name'];
-        }
-      }
-      isLoading = false;
-    } catch (e) {
-      print('Error loading students: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading students: $e')),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.tealAccent.shade400,
-                  child: const Icon(Icons.person, color: Colors.white),
+  void _showStudentMessageDialog() {
+    // Navigate to student selection screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecipientSelectionScreen(
+          title: 'Select Student',
+          recipientType: 'student',
+          service: _studentService,
+          icon: Icons.person,
+          iconBackgroundColor: Colors.tealAccent.shade400,
+          onRecipientSelected: (String studentId, String studentName) {
+            // Show message composition dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MessageCompositionScreen(
+                  recipientType: 'Student',
+                  recipientId: studentId,
+                  recipientName: studentName,
+                  iconData: Icons.person,
+                  iconColor: Colors.tealAccent.shade400,
+                  onSendMessage: (message) {
+                    _sendNotification(
+                      type: 'Student',
+                      message: message,
+                      studentId: studentId,
+                    );
+                  },
                 ),
-                const SizedBox(width: 12),
-                const Text('Message to Student'),
-              ],
-            ),
-            content: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
-                            labelText: 'Select Student',
-                            border: OutlineInputBorder(),
-                          ),
-                          hint: const Text('Choose a student'),
-                          value: selectedStudentId,
-                          items: studentMap.entries.map((entry) {
-                            return DropdownMenuItem<String>(
-                              value: entry.key,
-                              child: Text(entry.value),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              selectedStudentId = value;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: messageController,
-                          maxLines: 5,
-                          decoration: const InputDecoration(
-                            labelText: 'Message',
-                            hintText: 'Enter your message to the student',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.tealAccent.shade400,
-                ),
-                onPressed: isLoading || selectedStudentId == null
-                    ? null
-                    : () async {
-                        if (messageController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please enter a message')),
-                          );
-                          return;
-                        }
-                        
-                        Navigator.pop(context);
-                        _sendNotification(
-                          type: 'Student',
-                          message: messageController.text,
-                          studentId: selectedStudentId,
-                          scheduleDate: scheduleDate,
-                        );
-                      },
-                child: const Text('Send to Student', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
   // Show dialog for sending message to a parent
-  void _showParentMessageDialog() async {
-    final messageController = TextEditingController();
-    DateTime scheduleDate = DateTime.now();
-    String? selectedParentId;
-    Map<String, String> parentMap = {};
-    bool isLoading = true;
-
-    try {
-      // Load parents
-      final parents = await _parentService.getAllParents();
-      for (var parent in parents) {
-        if (parent.containsKey('_id') && parent.containsKey('name')) {
-          parentMap[parent['_id']] = parent['name'];
-        }
-      }
-      isLoading = false;
-    } catch (e) {
-      print('Error loading parents: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading parents: $e')),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.pinkAccent.shade200,
-                  child: const Icon(Icons.family_restroom, color: Colors.white),
+  void _showParentMessageDialog() {
+    // Navigate to parent selection screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecipientSelectionScreen(
+          title: 'Select Parent',
+          recipientType: 'parent',
+          service: _parentService,
+          icon: Icons.family_restroom,
+          iconBackgroundColor: Colors.pinkAccent.shade200,
+          onRecipientSelected: (String parentId, String parentName) {
+            // Show message composition dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MessageCompositionScreen(
+                  recipientType: 'Parent',
+                  recipientId: parentId,
+                  recipientName: parentName,
+                  iconData: Icons.family_restroom,
+                  iconColor: Colors.pinkAccent.shade200,
+                  onSendMessage: (message) {
+                    _sendNotification(
+                      type: 'Parent',
+                      message: message,
+                      parentId: parentId,
+                    );
+                  },
                 ),
-                const SizedBox(width: 12),
-                const Text('Message to Parent'),
-              ],
-            ),
-            content: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
-                            labelText: 'Select Parent',
-                            border: OutlineInputBorder(),
-                          ),
-                          hint: const Text('Choose a parent'),
-                          value: selectedParentId,
-                          items: parentMap.entries.map((entry) {
-                            return DropdownMenuItem<String>(
-                              value: entry.key,
-                              child: Text(entry.value),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              selectedParentId = value;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: messageController,
-                          maxLines: 5,
-                          decoration: const InputDecoration(
-                            labelText: 'Message',
-                            hintText: 'Enter your message to the parent',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.pinkAccent.shade200,
-                ),
-                onPressed: isLoading || selectedParentId == null
-                    ? null
-                    : () async {
-                        if (messageController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please enter a message')),
-                          );
-                          return;
-                        }
-                        
-                        Navigator.pop(context);
-                        _sendNotification(
-                          type: 'Parent',
-                          message: messageController.text,
-                          parentId: selectedParentId,
-                          scheduleDate: scheduleDate,
-                        );
-                      },
-                child: const Text('Send to Parent', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -1208,3 +853,332 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
     );
   }
 }
+
+// New recipient selection screen with search functionality
+class RecipientSelectionScreen extends StatefulWidget {
+  final String title;
+  final String recipientType; // 'teacher', 'student', 'class', 'parent'
+  final dynamic service; // The service to use for fetching data
+  final IconData icon;
+  final Color iconBackgroundColor;
+  final Function(String id, String name) onRecipientSelected;
+
+  const RecipientSelectionScreen({
+    Key? key,
+    required this.title,
+    required this.recipientType,
+    required this.service,
+    required this.icon,
+    required this.iconBackgroundColor,
+    required this.onRecipientSelected,
+  }) : super(key: key);
+
+  @override
+  State<RecipientSelectionScreen> createState() => _RecipientSelectionScreenState();
+}
+
+class _RecipientSelectionScreenState extends State<RecipientSelectionScreen> {
+  List<Map<String, dynamic>> _allRecipients = [];
+  List<Map<String, dynamic>> _filteredRecipients = [];
+  bool _isLoading = true;
+  String? _error;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecipients();
+    
+    _searchController.addListener(() {
+      _filterRecipients(_searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadRecipients() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      List<Map<String, dynamic>> recipients = [];
+      
+      // Call the appropriate method based on recipient type
+      if (widget.recipientType == 'teacher') {
+        recipients = await widget.service.getAllTeachers();
+      } else if (widget.recipientType == 'student') {
+        recipients = await widget.service.getAllStudents();
+      } else if (widget.recipientType == 'class') {
+        recipients = await widget.service.getAllClasses();
+      } else if (widget.recipientType == 'parent') {
+        recipients = await widget.service.getAllParents();
+      }
+      
+      setState(() {
+        _allRecipients = recipients;
+        _filteredRecipients = recipients;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _filterRecipients(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        _filteredRecipients = _allRecipients;
+      });
+      return;
+    }
+    
+    final lowercaseQuery = query.toLowerCase();
+    
+    setState(() {
+      _filteredRecipients = _allRecipients.where((recipient) {
+        final name = recipient['name']?.toString().toLowerCase() ?? '';
+        return name.contains(lowercaseQuery);
+      }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: widget.iconBackgroundColor,
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by name...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0.0, horizontal: 12.0),
+              ),
+            ),
+          ),
+          
+          // Results
+          Expanded(
+            child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Error: $_error', style: const TextStyle(color: Colors.red)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _loadRecipients,
+                          child: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  )
+                : _filteredRecipients.isEmpty
+                  ? const Center(child: Text('No results found'))
+                  : ListView.builder(
+                      itemCount: _filteredRecipients.length,
+                      itemBuilder: (context, index) {
+                        final recipient = _filteredRecipients[index];
+                        final id = recipient['_id'] ?? '';
+                        final name = recipient['name'] ?? 'Unknown';
+                        
+                        // Additional info based on recipient type
+                        String? additionalInfo;
+                        if (widget.recipientType == 'student') {
+                          additionalInfo = recipient['class_name'] ?? recipient['grade'] ?? '';
+                        } else if (widget.recipientType == 'teacher') {
+                          additionalInfo = recipient['subject'] ?? '';
+                        } else if (widget.recipientType == 'parent') {
+                          // Get children names if available
+                          final children = recipient['children'] as List?;
+                          if (children != null && children.isNotEmpty) {
+                            additionalInfo = 'Parent of: ${children.map((c) => c['name'] ?? '').join(', ')}';
+                          }
+                        }
+                        
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: widget.iconBackgroundColor,
+                              child: Icon(widget.icon, color: Colors.white),
+                            ),
+                            title: Text(name),
+                            subtitle: additionalInfo != null ? Text(additionalInfo) : null,
+                            onTap: () => widget.onRecipientSelected(id, name),
+                          ),
+                        );
+                      },
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// New screen for composing a message to a selected recipient
+class MessageCompositionScreen extends StatefulWidget {
+  final String recipientType;
+  final String recipientId;
+  final String recipientName;
+  final IconData iconData;
+  final Color iconColor;
+  final Function(String message) onSendMessage;
+
+  const MessageCompositionScreen({
+    Key? key,
+    required this.recipientType,
+    required this.recipientId,
+    required this.recipientName,
+    required this.iconData,
+    required this.iconColor,
+    required this.onSendMessage,
+  }) : super(key: key);
+
+  @override
+  State<MessageCompositionScreen> createState() => _MessageCompositionScreenState();
+}
+
+class _MessageCompositionScreenState extends State<MessageCompositionScreen> {
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Message to ${widget.recipientName}'),
+        backgroundColor: widget.iconColor,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Recipient info card
+            Card(
+              elevation: 2,
+              margin: const EdgeInsets.only(bottom: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: widget.iconColor.withOpacity(0.5)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: widget.iconColor,
+                      child: Icon(widget.iconData, color: Colors.white),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'To: ${widget.recipientName}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            'Type: ${widget.recipientType}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Message input
+            Expanded(
+              child: TextFormField(
+                controller: _messageController,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: InputDecoration(
+                  labelText: 'Message',
+                  hintText: 'Enter your message here...',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            
+            // Send button
+            Container(
+              margin: const EdgeInsets.only(top: 16),
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.iconColor,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  if (_messageController.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter a message')),
+                    );
+                    return;
+                  }
+                  
+                  widget.onSendMessage(_messageController.text);
+                  Navigator.pop(context);
+                  Navigator.pop(context); // Pop twice to return to notification management screen
+                },
+                child: const Text(
+                  'Send Message',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

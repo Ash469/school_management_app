@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:school_app/screens/role_selection_screen.dart';
 import '../models/user_model.dart';
 import 'package:intl/intl.dart';
-import '../utils/storage_util.dart'; 
+import '../utils/storage_util.dart';
 import '../utils/app_theme.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/parents/attendance_screen.dart';
 import '../screens/parents/performance_screen.dart';
 import '../services/student_service.dart';
@@ -14,6 +14,7 @@ import '../services/class_services.dart';
 import './parents/notification_screen.dart';
 import '../services/fcm_service.dart';
 import '../utils/constants.dart'; // Import constants for base URL
+import '../screens/parents/profile_screen.dart';
 
 class ParentDashboard extends StatefulWidget {
   final User user;
@@ -25,11 +26,14 @@ class ParentDashboard extends StatefulWidget {
   _ParentDashboardState createState() => _ParentDashboardState();
 }
 
-class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProviderStateMixin {
+class _ParentDashboardState extends State<ParentDashboard>
+    with SingleTickerProviderStateMixin {
   bool _isLoading = true;
+  String studentId= '';
+  String schoolId = '';
   Map<String, dynamic> _dashboardStats = {};
   late AnimationController _animationController;
-  
+
   // Theme colors
   late Color _primaryColor;
   late Color _accentColor;
@@ -49,14 +53,14 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
-    
+
     // Initialize services with baseUrl like other dashboards
     const baseUrl = Constants.apiBaseUrl; // Use the constant for base URL
     _studentService = StudentService(baseUrl: baseUrl);
     _attendanceService = AttendanceService(baseUrl: baseUrl);
     _gradingService = GradingService(baseUrl: baseUrl);
     _classService = ClassService(baseUrl: baseUrl);
-    
+
     _loadThemeColors();
     _loadDashboardData();
     _loadStudentsData();
@@ -64,35 +68,37 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
 
   // Student data for the children of the parent
   List<Map<String, dynamic>> _studentsData = [];
-  
+
   Future<void> _loadStudentsData() async {
     try {
       print('👨‍👩‍👧‍👦 Loading students for parent: ${widget.user.id}');
-      
+
       // Get students for this parent directly from the API
-      final response = await _studentService.getStudentsByParentId(widget.user.id);
+      final response =
+          await _studentService.getStudentsByParentId(widget.user.id);
       print('👨‍👩‍👧‍👦 Found ${response.length} children for parent');
-      
+
       // Transform student data to the format expected by the UI
       final transformedStudents = await Future.wait(
         response.map((student) async {
           // Get attendance data - use academicReport if available, otherwise fetch it
           Map<String, dynamic> attendanceData;
-          if (student['academicReport'] != null && 
+          if (student['academicReport'] != null &&
               student['academicReport']['attendancePct'] != null) {
-            final attendancePct = student['academicReport']['attendancePct'] as int;
+            final attendancePct =
+                student['academicReport']['attendancePct'] as int;
             attendanceData = {
               'percentage': '$attendancePct%',
               'presentDays': 0, // Not available in the report
-              'totalDays': 0,   // Not available in the report
+              'totalDays': 0, // Not available in the report
             };
           } else {
             attendanceData = await _getStudentAttendance(student['_id']);
           }
-          
+
           // Get grade data - use academicReport if it has grades, otherwise fetch it
           Map<String, dynamic> gradeData;
-          if (student['academicReport'] != null && 
+          if (student['academicReport'] != null &&
               student['academicReport']['grades'] != null &&
               (student['academicReport']['grades'] as List).isNotEmpty) {
             // Calculate from academicReport grades
@@ -105,7 +111,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           } else {
             gradeData = await _getStudentGrades(student['_id']);
           }
-          
+
           // Extract class info directly from the response if classId is expanded
           Map<String, dynamic> classInfo;
           if (student['classId'] is Map<String, dynamic>) {
@@ -119,12 +125,13 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
             // Fallback to fetching class info if not expanded
             classInfo = await _getClassInfo(student['classId']);
           }
-          
+
           return {
             '_id': student['_id'] ?? '',
             'name': student['name'] ?? 'Unknown Student',
             'grade': classInfo['grade'] ?? 'Unknown Grade',
             'section': classInfo['section'] ?? 'A',
+            studentId : student['studentId']??" ",
             'rollNumber': student['studentId'] ?? '',
             'image': _getStudentImage(student),
             'attendance': attendanceData['percentage'],
@@ -137,13 +144,12 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           };
         }).toList(),
       );
-      
+
       if (mounted) {
         setState(() {
           _studentsData = transformedStudents;
         });
       }
-      
     } catch (e) {
       print('👨‍👩‍👧‍👦 Error loading students: $e');
       if (mounted) {
@@ -157,15 +163,16 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   // Get real attendance data for a student
   Future<Map<String, dynamic>> _getStudentAttendance(String studentId) async {
     try {
-      final attendanceRecords = await _attendanceService.listAttendance(studentId: studentId);
-      
+      final attendanceRecords =
+          await _attendanceService.listAttendance(studentId: studentId);
+
       if (attendanceRecords.isEmpty) {
         return {'percentage': '0%', 'presentDays': 0, 'totalDays': 0};
       }
-      
+
       int totalDays = 0;
       int presentDays = 0;
-      
+
       for (var record in attendanceRecords) {
         if (record['entries'] is List) {
           for (var entry in record['entries']) {
@@ -178,9 +185,10 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           }
         }
       }
-      
-      final percentage = totalDays > 0 ? ((presentDays / totalDays) * 100).round() : 0;
-      
+
+      final percentage =
+          totalDays > 0 ? ((presentDays / totalDays) * 100).round() : 0;
+
       return {
         'percentage': '$percentage%',
         'presentDays': presentDays,
@@ -196,14 +204,15 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   Future<Map<String, dynamic>> _getStudentGrades(String studentId) async {
     try {
       final grades = await _gradingService.getStudentGrades(studentId);
-      
+
       if (grades.isEmpty) {
         return {'gpa': '0.0', 'average': 0.0};
       }
-      
+
       final average = GradingService.calculateOverallAverage(grades);
-      final gpa = (average / 25).clamp(0.0, 4.0); // Convert percentage to 4.0 scale
-      
+      final gpa =
+          (average / 25).clamp(0.0, 4.0); // Convert percentage to 4.0 scale
+
       return {
         'gpa': gpa.toStringAsFixed(1),
         'average': average,
@@ -218,18 +227,18 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   Future<Map<String, dynamic>> _getClassInfo(dynamic classId) async {
     try {
       if (classId == null) return {'grade': 'Unknown', 'section': 'A'};
-      
+
       String actualClassId;
       if (classId is Map<String, dynamic>) {
         actualClassId = classId['_id'] ?? '';
       } else {
         actualClassId = classId.toString();
       }
-      
+
       if (actualClassId.isEmpty) return {'grade': 'Unknown', 'section': 'A'};
-      
+
       final classData = await _classService.getClassById(actualClassId);
-      
+
       return {
         'grade': classData['grade'] ?? 'Unknown',
         'section': classData['section'] ?? 'A',
@@ -242,15 +251,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   }
 
   // Helper methods for mock data (replace with actual service calls)
-  int _calculateMockAttendance() {
-    // Mock attendance calculation - replace with AttendanceService call
-    return 90 + (DateTime.now().millisecond % 10); // 90-99%
-  }
 
-  double _calculateMockGPA() {
-    // Mock GPA calculation - replace with GradingService call
-    return 3.5 + (DateTime.now().millisecond % 5) / 10; // 3.5-3.9
-  }
 
   String _getStudentImage(Map<String, dynamic> student) {
     // Return a default student image or use profile picture if available
@@ -258,7 +259,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     if (profilePicture != null && profilePicture.isNotEmpty) {
       return profilePicture;
     }
-    
+
     // Generate a consistent random image based on student ID
     final studentId = student['_id'] ?? student['studentId'] ?? '';
     final imageIndex = studentId.hashCode.abs() % 10 + 1;
@@ -271,24 +272,24 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     _tertiaryColor = AppTheme.getTertiaryColor(AppTheme.defaultTheme);
     _gradientColors = AppTheme.getGradientColors(AppTheme.defaultTheme);
   }
-  
+
   Future<void> _loadDashboardData() async {
     // Simulate loading data
     await Future.delayed(const Duration(milliseconds: 800));
-    
+
     if (mounted) {
       setState(() {
         _dashboardStats = {
           'announcements': 3,
           'absences': 2,
         };
-        
+
         _isLoading = false;
       });
       _animationController.forward();
     }
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -299,17 +300,18 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 360 || screenSize.height < 700;
-    
+
     return Theme(
       data: AppTheme.getTheme(AppTheme.defaultTheme),
       child: Scaffold(
         appBar: AppBar(
           title: Row(
             children: [
-              Icon(Icons.family_restroom, 
+              Icon(Icons.family_restroom,
                   color: Colors.white, size: isSmallScreen ? 22 : 28),
               SizedBox(width: isSmallScreen ? 8 : 12),
-              const Text('Parent',
+              const Text(
+                'Parent',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ],
@@ -323,51 +325,81 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               ),
               onPressed: () {
                 Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (context) => ParentNotificationScreen(user: widget.user),
-                  )
-                );
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ParentNotificationScreen(user: widget.user),
+                    ));
               },
+            ),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.white,
+                child: Material(
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.hardEdge,
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      // Navigate to profile screen when avatar is tapped
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ParentProfileScreen(user: widget.user),
+                        ),
+                      );
+                    },
+                    child: Hero(
+                      tag: 'profile-${widget.user.id}',
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundImage: NetworkImage(widget.user.profile.profilePicture),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
         drawer: _buildDrawer(),
         body: _isLoading
-          ? Center(
-              child: CircularProgressIndicator(color: _accentColor),
-            )
-          : RefreshIndicator(
-              color: _accentColor,
-              onRefresh: () async {
-                setState(() {
-                  _isLoading = true;
-                });
-                await _loadDashboardData();
-                return Future.value();
-              },
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildGreetingCard(),
-                    const SizedBox(height: 24),
-                    
-                    // My Children Section
-                    _buildSectionHeader('My Children'),
-                    const SizedBox(height: 12),
-                    _buildStudentsCarousel(),
-                    const SizedBox(height: 24),
-                    
-                    // Performance Reports Section
-                    _buildSectionHeader('Quick Access'),
-                    const SizedBox(height: 12),
-                    _buildQuickActionsGrid(),
-                  ],
+            ? Center(
+                child: CircularProgressIndicator(color: _accentColor),
+              )
+            : RefreshIndicator(
+                color: _accentColor,
+                onRefresh: () async {
+                  setState(() {
+                    _isLoading = true;
+                  });
+                  await _loadDashboardData();
+                  return Future.value();
+                },
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildGreetingCard(),
+                      const SizedBox(height: 24),
+
+                      // My Children Section
+                      _buildSectionHeader('My Children'),
+                      const SizedBox(height: 12),
+                      _buildStudentsCarousel(),
+                      const SizedBox(height: 24),
+
+                      // Performance Reports Section
+                      _buildSectionHeader('Quick Access'),
+                      const SizedBox(height: 12),
+                      _buildQuickActionsGrid(),
+                    ],
+                  ),
                 ),
               ),
-            ),
         bottomNavigationBar: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           items: const [
@@ -390,27 +422,27 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
             switch (index) {
               case 0:
                 Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (context) => ParentPerformanceScreen(user: widget.user),
-                  )
-                );
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ParentPerformanceScreen(user: widget.user),
+                    ));
                 break;
               case 1:
                 Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (context) => ParentAttendanceScreen(user: widget.user),
-                  )
-                );
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ParentAttendanceScreen(user: widget.user),
+                    ));
                 break;
               case 2:
-               Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (context) => ParentNotificationScreen(user: widget.user),
-                  )
-                );
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ParentNotificationScreen(user: widget.user),
+                    ));
                 break;
             }
           },
@@ -418,7 +450,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       ),
     );
   }
-  
+
   Widget _buildGreetingCard() {
     return Card(
       elevation: 4,
@@ -452,10 +484,9 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                   Text(
                     widget.user.profile.firstName,
                     style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white
-                    ),
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -470,7 +501,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       ),
     );
   }
-  
+
   Widget _buildSectionHeader(String title) {
     return Row(
       children: [
@@ -478,8 +509,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           width: 4,
           height: 20,
           decoration: BoxDecoration(
-              color: _accentColor,
-              borderRadius: BorderRadius.circular(2)),
+              color: _accentColor, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 8),
         Text(
@@ -489,11 +519,12 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       ],
     );
   }
-  
+
   Widget _buildStudentsCarousel() {
     if (_studentsData.isEmpty) {
       return Card(
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16))),
         child: Container(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -527,7 +558,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
         ),
       );
     }
-    
+
     return SizedBox(
       height: 120,
       child: ListView.builder(
@@ -535,14 +566,15 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
         itemCount: _studentsData.length,
         itemBuilder: (context, index) {
           final student = _studentsData[index];
-          
+
           return GestureDetector(
             child: Container(
               width: 300,
               margin: const EdgeInsets.only(right: 16),
               child: Card(
                 elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
@@ -560,15 +592,18 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                         children: [
                           CircleAvatar(
                             radius: 30,
-                            backgroundImage: NetworkImage(student['image'] as String),
+                            backgroundImage:
+                                NetworkImage(student['image'] as String),
                             onBackgroundImageError: (exception, stackTrace) {
                               // Handle image loading error
                               print('Error loading student image: $exception');
                             },
-                            child: student['image'] == null || (student['image'] as String).isEmpty
+                            child: student['image'] == null ||
+                                    (student['image'] as String).isEmpty
                                 ? Text(
-                                    (student['name'] as String).isNotEmpty 
-                                        ? (student['name'] as String)[0].toUpperCase()
+                                    (student['name'] as String).isNotEmpty
+                                        ? (student['name'] as String)[0]
+                                            .toUpperCase()
                                         : '?',
                                     style: const TextStyle(
                                       fontSize: 24,
@@ -596,7 +631,8 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                                 ),
                                 Text(
                                   "Roll #: ${student['rollNumber'] as String}",
-                                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                  style: TextStyle(
+                                      color: Colors.grey[600], fontSize: 12),
                                 ),
                               ],
                             ),
@@ -609,11 +645,13 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                 ),
               ),
             ),
+            
           );
         },
       ),
     );
   }
+
   Widget _buildQuickActionsGrid() {
     return GridView.count(
       shrinkWrap: true,
@@ -652,18 +690,18 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           title: 'School Updates',
           icon: Icons.notifications,
           color: Colors.red,
-           onTap: () => Navigator.push(
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ParentNotificationScreen(user: widget.user),
             ),
           ),
-
         ),
+       
       ],
     );
   }
-  
+
   Widget _buildDashboardCard({
     required BuildContext context,
     required String title,
@@ -716,9 +754,9 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           ),
         ),
       ),
-      );
+    );
   }
-  
+
   Widget _buildDrawer() {
     return Drawer(
       child: Column(
@@ -767,37 +805,46 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                       Navigator.pop(context);
                     },
                   ),
-                  
+                  _buildDrawerItem(Icons.person, 'My Profile', () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ParentProfileScreen(user: widget.user),
+                      ),
+                    );
+                  }, color: Colors.blue),
                   _buildDrawerSectionHeader('ACADEMICS'),
-                  
                   _buildDrawerItem(Icons.grade, 'Performance Reports', () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ParentPerformanceScreen(user: widget.user),
+                        builder: (context) =>
+                            ParentPerformanceScreen(user: widget.user),
                       ),
                     );
                   }, color: Colors.indigo),
-                  
-                  _buildDrawerItem(Icons.calendar_today, 'Attendance Reports', () {
+                  _buildDrawerItem(Icons.calendar_today, 'Attendance Reports',
+                      () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ParentAttendanceScreen(user: widget.user),
+                        builder: (context) =>
+                            ParentAttendanceScreen(user: widget.user),
                       ),
                     );
                   }, color: Colors.green),
-                  
                   _buildDrawerSectionHeader('COMMUNICATION'),
-                  
-                  _buildDrawerItem(Icons.notifications_outlined, 'Notifications', () {
-                   Navigator.pop(context);
+                  _buildDrawerItem(
+                      Icons.notifications_outlined, 'Notifications', () {
+                    Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ParentNotificationScreen(user: widget.user),
+                        builder: (context) =>
+                            ParentNotificationScreen(user: widget.user),
                       ),
                     );
                   }, color: Colors.red),
@@ -805,17 +852,160 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
               ),
             ),
           ),
-          
+
           // Bottom fixed logout button
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.grey.shade300)),
-            ),
-            child: _buildDrawerItem(Icons.logout, 'Logout', () {
-              _handleLogout(); // Call the new logout method
-            }, color: Colors.red, isLogout: true),
-          ),
+          ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.logout, color: Colors.red),
+                ),
+                title: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
+                onTap: () {
+                  // Show confirmation dialog before logout
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext dialogContext) {
+                      return AlertDialog(
+                        title: const Text('Confirm Logout'),
+                        content: const Text('Are you sure you want to log out?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                            },
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              // Close the confirmation dialog first
+                              Navigator.of(dialogContext).pop();
+                              
+                              // Store the current context
+                              final currentContext = context;
+                              
+                              // Check if still mounted before showing loading dialog
+                              if (mounted) {
+                                // Show loading indicator
+                                showDialog(
+                                  context: currentContext,
+                                  barrierDismissible: false,
+                                  builder: (context) => Dialog(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(20),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircularProgressIndicator(color: _primaryColor),
+                                          const SizedBox(height: 16),
+                                          const Text('Logging out...'),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              try {
+                                // Delete FCM token from server
+                                final fcmService = FCMService();
+                                await fcmService.deleteFCMTokenFromServer(widget.user.id);
+                                
+                                // Clear user auth credentials and other storage
+                                await StorageUtil.setString('accessToken', '');
+                                await StorageUtil.setString('refreshToken', '');
+
+                                // Clear user profile information
+                                await StorageUtil.setString('userId', '');
+                                await StorageUtil.setString('userEmail', '');
+                                await StorageUtil.setString('userRole', '');
+                                await StorageUtil.setString('userFirstName', '');
+                                await StorageUtil.setString('userLastName', '');
+                                await StorageUtil.setString('userPhone', '');
+                                await StorageUtil.setString('userAddress', '');
+                                await StorageUtil.setString('userProfilePic', '');
+
+                                // Clear school-related information
+                                await StorageUtil.setString('schoolToken', '');
+                                await StorageUtil.setString('schoolName', '');
+                                await StorageUtil.setString('schoolId', '');
+                                await StorageUtil.setString('schoolAddress', '');
+                                await StorageUtil.setString('schoolPhone', '');
+
+                                // Set login status to false
+                                await StorageUtil.setBool('isLoggedIn', false);
+
+                                // Clear SharedPreferences as well
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.clear();
+                                
+                                // Close loading dialog if still mounted
+                                if (mounted) {
+                                  Navigator.of(currentContext).pop();
+                                }
+                                
+                                // Create navigation destination
+                                final navigationDestination = MaterialPageRoute(
+                                  builder: (context) => const RoleSelectionScreen(
+                                    schoolName: "",
+                                    schoolToken: "",
+                                    schoolAddress: "",
+                                    schoolPhone: "",
+                                  ),
+                                );
+                                
+                                // Only navigate if still mounted
+                                if (mounted) {
+                                  // Navigate to role selection screen
+                                  Navigator.of(currentContext).pushAndRemoveUntil(
+                                    navigationDestination,
+                                    (route) => false,
+                                  );
+                                }
+                              } catch (e) {
+                                print('⚠️ Error during logout: $e');
+                                
+                                // Create navigation destination
+                                final navigationDestination = MaterialPageRoute(
+                                  builder: (context) => const RoleSelectionScreen(
+                                    schoolName: "",
+                                    schoolToken: "",
+                                    schoolAddress: "",
+                                    schoolPhone: "",
+                                  ),
+                                );
+                                
+                                // Only access context if still mounted
+                                if (mounted) {
+                                  // Try to close loading dialog
+                                  Navigator.of(currentContext).pop();
+                                  
+                                  // Show error and navigate
+                                  ScaffoldMessenger.of(currentContext).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Logout error: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  
+                                  Navigator.of(currentContext).pushAndRemoveUntil(
+                                    navigationDestination,
+                                    (route) => false,
+                                  );
+                                }
+                              }
+                            },
+                            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
         ],
       ),
     );
@@ -823,15 +1013,15 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
 
   Widget _buildDrawerSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0, bottom: 8.0),
+      padding: const EdgeInsets.only(
+          left: 16.0, right: 16.0, top: 16.0, bottom: 8.0),
       child: Row(
         children: [
           Container(
             width: 4,
             height: 16,
             decoration: BoxDecoration(
-                color: _accentColor,
-                borderRadius: BorderRadius.circular(2)),
+                color: _accentColor, borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(width: 8),
           Text(
@@ -848,7 +1038,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap, 
+  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap,
       {String? badge, required Color color, bool isLogout = false}) {
     return ListTile(
       dense: false,
@@ -868,7 +1058,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
           color: isLogout ? Colors.red : null,
         ),
       ),
-      trailing: badge != null 
+      trailing: badge != null
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
@@ -889,7 +1079,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
       selectedColor: color,
     );
   }
-  
+
   void _showNotifications(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -944,9 +1134,7 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
                 Expanded(
                   child: ListView(
                     controller: scrollController,
-                    children: [
-                     
-                    ],
+                    children: [],
                   ),
                 ),
               ],
@@ -957,143 +1145,5 @@ class _ParentDashboardState extends State<ParentDashboard> with SingleTickerProv
     );
   }
 
-
   // Update the logout functionality to match school admin dashboard
-  void _handleLogout() {
-    // Show confirmation dialog before logout
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Confirm Logout'),
-          content: const Text('Are you sure you want to log out?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel', style: TextStyle(color: _accentColor)),
-            ),
-            TextButton(
-              onPressed: () async {
-                // Close dialog first to avoid context issues
-                Navigator.of(context).pop();
-                
-                // Capture the BuildContext and check if still mounted before showing dialog
-                if (mounted) {
-                  // Show loading indicator
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (BuildContext dialogContext) => Dialog(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircularProgressIndicator(color: _primaryColor),
-                            const SizedBox(height: 16),
-                            const Text('Logging out...'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                try {
-                  // Delete FCM token from server
-                  final fcmService = FCMService();
-                  await fcmService.deleteFCMTokenFromServer(widget.user.id);
-                  
-                  // Clear user auth credentials
-                  await StorageUtil.setString('accessToken', '');
-                  await StorageUtil.setString('refreshToken', '');
-
-                  // Clear user profile information
-                  await StorageUtil.setString('userId', '');
-                  await StorageUtil.setString('userEmail', '');
-                  await StorageUtil.setString('userRole', '');
-                  await StorageUtil.setString('userFirstName', '');
-                  await StorageUtil.setString('userLastName', '');
-                  await StorageUtil.setString('userPhone', '');
-                  await StorageUtil.setString('userAddress', '');
-                  await StorageUtil.setString('userProfilePic', '');
-
-                  // Clear school-related information
-                  await StorageUtil.setString('schoolToken', '');
-                  await StorageUtil.setString('schoolName', '');
-                  await StorageUtil.setString('schoolId', '');
-                  await StorageUtil.setString('schoolAddress', '');
-                  await StorageUtil.setString('schoolPhone', '');
-
-                  // Set login status to false
-                  await StorageUtil.setBool('isLoggedIn', false);
-
-                  // Clear SharedPreferences as well
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.clear();
-                  
-                  // Store the navigation destination
-                  final navigationDestination = MaterialPageRoute(
-                    builder: (context) => const RoleSelectionScreen(
-                      schoolName: "",
-                      schoolToken: "",
-                      schoolAddress: "",
-                      schoolPhone: "",
-                    ),
-                  );
-                  
-                  // Navigate safely by first checking if still mounted
-                  if (mounted) {
-                    // Pop the loading dialog
-                    Navigator.of(context).pop();
-                    
-                    // Then navigate to the role selection screen
-                    Navigator.of(context).pushAndRemoveUntil(
-                      navigationDestination,
-                      (route) => false,
-                    );
-                  }
-                } catch (e) {
-                  print('⚠️ Error during logout: $e');
-                  
-                  // Store the navigation destination
-                  final navigationDestination = MaterialPageRoute(
-                    builder: (context) => const RoleSelectionScreen(
-                      schoolName: "",
-                      schoolToken: "",
-                      schoolAddress: "",
-                      schoolPhone: "",
-                    ),
-                  );
-                  
-                  // Navigate safely by first checking if still mounted
-                  if (mounted) {
-                    // Pop the loading dialog
-                    Navigator.of(context).pop();
-                    
-                    // Show error message
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Logout error: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    
-                    // Then navigate to the role selection screen
-                    Navigator.of(context).pushAndRemoveUntil(
-                      navigationDestination,
-                      (route) => false,
-                    );
-                  }
-                }
-              },
-              child: const Text('Logout', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
+    }

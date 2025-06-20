@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/teacher_service.dart'; 
+import '../../services/class_services.dart'; // Import ClassService
 import '../../utils/storage_util.dart'; 
 import '../../utils/constants.dart';
 
@@ -25,6 +26,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
   
   // Initialize the teacher service
   late TeacherService _teacherService;
+  late ClassService _classService; // Initialize ClassService
   
   // Theme colors
   late Color _primaryColor;
@@ -39,6 +41,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     super.initState();
     _loadThemeColors();
     _teacherService = TeacherService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
+    _classService = ClassService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
     _loadTeachers();
   }
   
@@ -57,36 +60,37 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     });
 
     try {
-      // Access values directly from StorageUtil memory cache
       final schoolId = await StorageUtil.getString('schoolId');
-    
-      
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
-      
-      // Use the TeacherService to get all teachers
+
       final teachers = await _teacherService.getAllTeachers();
-      
+
       // Map API response to our expected data format
       final formattedTeachers = teachers.map((teacher) {
-        // Process the teacher data to match our expected structure
+        final classes = teacher['classes'] is List
+            ? (teacher['classes'] as List).map((c) => c['name']?.toString() ?? 'Unknown Class').toList()
+            : <String>[];
+        final subjects = teacher['teachingSubs'] is List
+            ? List<String>.from(teacher['teachingSubs'])
+            : <String>[];
         return {
-          'id': teacher['_id'] ?? '', // Use _id as the primary identifier
+          'id': teacher['_id'] ?? '',
           'name': teacher['name'] ?? 'Unknown',
           'email': teacher['email'] ?? '',
           'phone': teacher['phone'] ?? '',
-          'subjects': _extractSubjects(teacher),
-          'classes': _extractClasses(teacher),
-          'joinDate': teacher['dateJoined'] != null 
-              ? _formatDate(teacher['dateJoined']) 
+          'subjects': subjects,
+          'classes': classes,
+          'joinDate': teacher['dateJoined'] != null
+              ? _formatDate(teacher['dateJoined'])
               : (teacher['createdAt'] != null ? _formatDate(teacher['createdAt']) : 'Unknown'),
           'qualification': teacher['qualification'] ?? 'Not specified',
           'avatar': 'assets/images/teacher_default.png',
-          'roles': _extractRoles(teacher),
+          'roles': teacher['roles'] ?? [],
         };
       }).toList();
-      
+
       setState(() {
         _teachers = formattedTeachers;
         _filteredTeachers = List.from(_teachers);
@@ -197,6 +201,24 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
             .toList();
       }
     });
+  }
+
+  // Helper method to extract classes with names from teacher data
+  Future<List<String>> _extractClassesWithNames(Map<String, dynamic> teacher) async {
+    if (teacher.containsKey('classes') && teacher['classes'] is List) {
+      final classIds = List<String>.from(teacher['classes']);
+      final classNames = <String>[];
+      for (final classId in classIds) {
+        try {
+          final className = await _classService.getClassNameById(classId);
+          classNames.add(className);
+        } catch (e) {
+          classNames.add('Unknown Class');
+        }
+      }
+      return classNames;
+    }
+    return [];
   }
 
   @override
@@ -621,26 +643,16 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                                                     ),
                                                     Row(
                                                       children: [
-                                                        Material(
-                                                          color: Colors.transparent,
-                                                          shape: const CircleBorder(),
-                                                          clipBehavior: Clip.antiAlias,
-                                                          child: IconButton(
-                                                            icon: Icon(Icons.badge, color: Colors.green.shade400),
-                                                            onPressed: () => _showManageRolesDialog(teacher),
-                                                            tooltip: "Manage Roles",
-                                                          ),
-                                                        ),
-                                                        Material(
-                                                          color: Colors.transparent,
-                                                          shape: const CircleBorder(),
-                                                          clipBehavior: Clip.antiAlias,
-                                                          child: IconButton(
-                                                            icon: Icon(Icons.class_, color: Colors.orange.shade400),
-                                                            onPressed: () => _showAssignClassesDialog(teacher),
-                                                            tooltip: "Assign Classes",
-                                                          ),
-                                                        ),
+                                                        // Material(
+                                                        //   color: Colors.transparent,
+                                                        //   shape: const CircleBorder(),
+                                                        //   clipBehavior: Clip.antiAlias,
+                                                        //   child: IconButton(
+                                                        //     icon: Icon(Icons.class_, color: Colors.orange.shade400),
+                                                        //     onPressed: () => _showAssignClassesDialog(teacher),
+                                                        //     tooltip: "Assign Classes",
+                                                        //   ),
+                                                        // ),
                                                         Material(
                                                           color: Colors.transparent,
                                                           shape: const CircleBorder(),
@@ -660,16 +672,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                                                             borderRadius: BorderRadius.circular(12),
                                                           ),
                                                           itemBuilder: (context) => [
-                                                            const PopupMenuItem(
-                                                              value: 'message',
-                                                              child: Row(
-                                                                children: [
-                                                                  Icon(Icons.message, color: Colors.blue, size: 20),
-                                                                  SizedBox(width: 8),
-                                                                  Text('Send Message'),
-                                                                ],
-                                                              ),
-                                                            ),
                                                             const PopupMenuItem(
                                                               value: 'delete',
                                                               child: Row(
@@ -1190,38 +1192,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                               ),
                             ),
                           ),
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.badge),
-                            label: const Text('Roles'),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showManageRolesDialog(teacher);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: _tertiaryColor,
-                              side: BorderSide(color: _tertiaryColor),
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.message),
-                            label: const Text('Message'),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showSendMessageDialog(teacher);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: _accentColor,
-                              side: BorderSide(color: _accentColor),
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
+
                         ],
                       ),
                     ],
@@ -1232,7 +1203,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
           ),
         ),
       ),
-    );
+      );
   }
   
   Widget _buildInfoSection(String title, IconData icon, List<Widget> children, Color color) {
@@ -1329,7 +1300,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     final phoneController = TextEditingController();
-    final passwordController = TextEditingController();
     final dateJoinedController = TextEditingController(text: DateTime.now().toString().substring(0, 10));
     final teacherIdController = TextEditingController(); // Added for Teacher ID
     
@@ -1342,7 +1312,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     Map<String, String?> errors = {
       'name': null,
       'email': null,
-      'password': null,
       'teacherId': null, // Added for Teacher ID validation
     };
 
@@ -1455,27 +1424,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                               }
                             });
                           },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Password field
-                        TextField(
-                          controller: passwordController,
-                          decoration: InputDecoration(
-                            labelText: 'Password*',
-                            hintText: 'Enter temporary password',
-                            errorText: errors['password'],
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            prefixIcon: const Icon(Icons.lock),
-                          ),
-                          obscureText: true,
-                          onChanged: (value) {
-                            setState(() {
-                              errors['password'] = value.isEmpty ? 'Password is required' : null;
-                            });
-                          },
+                        
                         ),
                         const SizedBox(height: 16),
                         
@@ -1544,26 +1493,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                           keyboardType: TextInputType.datetime,
                         ),
                         const SizedBox(height: 16),
-                        
-                        // Salary status
-                        CheckboxListTile(
-                          title: const Text("Salary Paid"),
-                          subtitle: const Text("Check if teacher's salary is already paid"),
-                          value: salaryPaid,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              salaryPaid = value ?? false;
-                            });
-                          },
-                          tileColor: Colors.grey.shade50,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        ),
-                        
-                        const SizedBox(height: 24),
                         const Divider(),
                         const SizedBox(height: 16),
                         
@@ -1608,46 +1537,46 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                         const SizedBox(height: 24),
                         
                         // Teacher roles section
-                        const Text(
-                          'Teacher Roles:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Select one or more roles for the teacher',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
+                        // const Text(
+                        //   'Teacher Roles:',
+                        //   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        // ),
+                        // const SizedBox(height: 8),
+                        // const Text(
+                        //   'Select one or more roles for the teacher',
+                        //   style: TextStyle(fontSize: 12, color: Colors.grey),
+                        // ),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            'ClassTeacher',
-                            'SubjectTeacher',
-                            'DepartmentHead',
-                            'HeadTeacher',
-                          ].map((role) => FilterChip(
-                                label: Text(_formatRoleForDisplay(role)),
-                                selected: selectedRoles.contains(role),
-                                onSelected: (selected) {
-                                  setState(() {
-                                    if (selected) {
-                                      selectedRoles.add(role);
-                                    } else {
-                                      // Ensure at least one role is selected
-                                      if (selectedRoles.length > 1) {
-                                        selectedRoles.remove(role);
-                                      }
-                                    }
-                                  });
-                                },
-                                checkmarkColor: _accentColor,
-                                selectedColor: _accentColor.withOpacity(0.15),
-                                backgroundColor: Colors.grey.shade50,
-                                side: BorderSide(color: Colors.grey.shade300),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              )).toList(),
-                        ),
+                        // Wrap(
+                        //   spacing: 8,
+                        //   runSpacing: 8,
+                        //   children: [
+                        //     'ClassTeacher',
+                        //     'SubjectTeacher',
+                        //     'DepartmentHead',
+                        //     'HeadTeacher',
+                        //   ].map((role) => FilterChip(
+                        //         label: Text(_formatRoleForDisplay(role)),
+                        //         selected: selectedRoles.contains(role),
+                        //         onSelected: (selected) {
+                        //           setState(() {
+                        //             if (selected) {
+                        //               selectedRoles.add(role);
+                        //             } else {
+                        //               // Ensure at least one role is selected
+                        //               if (selectedRoles.length > 1) {
+                        //                 selectedRoles.remove(role);
+                        //               }
+                        //             }
+                        //           });
+                        //         },
+                        //         checkmarkColor: _accentColor,
+                        //         selectedColor: _accentColor.withOpacity(0.15),
+                        //         backgroundColor: Colors.grey.shade50,
+                        //         side: BorderSide(color: Colors.grey.shade300),
+                        //         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        //       )).toList(),
+                        // ),
                       ],
                     ),
                   ),
@@ -1699,7 +1628,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                             } else {
                               errors['email'] = null;
                             }
-                            errors['password'] = passwordController.text.isEmpty ? 'Password is required' : null;
                             errors['teacherId'] = teacherIdController.text.isEmpty ? 'Teacher ID is required' : null;
                             
                             hasErrors = errors.values.any((error) => error != null);
@@ -1739,7 +1667,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                               name: nameController.text,
                               email: emailController.text,
                               phone: phoneController.text,
-                              password: passwordController.text,
                               dateJoined: dateJoinedController.text,
                               teacherId: teacherIdController.text,
                               salaryPaid: salaryPaid,
@@ -1832,16 +1759,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
                   decoration: const InputDecoration(labelText: 'Phone Number'),
                   keyboardType: TextInputType.phone,
                 ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  title: const Text("Salary Paid"),
-                  value: salaryPaid,
-                  onChanged: (bool? value) {
-                    setState(() {
-                      salaryPaid = value ?? false;
-                    });
-                  },
-                ),
+
                 const SizedBox(height: 24),
                 const Text(
                   'Teaching Subjects:',
@@ -1931,103 +1849,90 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
       );
   }
   
-  void _showAssignClassesDialog(Map<String, dynamic> teacher) {
-    final availableClasses = ['Class 10A', 'Class 9B', 'Class 8C', 'Class 7D'];
-    final selectedClasses = Set<String>.from(teacher['classes'] as List<String>);
+  void _showAssignClassesDialog(Map<String, dynamic> teacher) async {
+    try {
+      setState(() => _isLoading = true);
+      final allClasses = await _classService.getAllClasses();
+      final selectedClassIds = Set<String>.from(teacher['classes'] as List<String>);
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text('Assign Classes to ${teacher['name']}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: availableClasses.map((className) => CheckboxListTile(
-                title: Text(className),
-                value: selectedClasses.contains(className),
-                onChanged: (bool? value) {
-                  setState(() {
-                    if (value == true) {
-                      selectedClasses.add(className);
-                    } else {
-                      selectedClasses.remove(className);
-                    }
-                  });
-                },
-              )).toList(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final index = _teachers.indexOf(teacher);
-                if (index != -1) {
-                  setState(() {
-                    _teachers[index]['classes'] = selectedClasses.toList();
-                    _filteredTeachers = List.from(_teachers);
-                  });
-                }
+      setState(() => _isLoading = false);
 
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Classes assigned successfully')),
-                );
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showSendMessageDialog(Map<String, dynamic> teacher) {
-    final messageController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Message to ${teacher['name']}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: messageController,
-              decoration: const InputDecoration(
-                labelText: 'Message',
-                hintText: 'Enter your message here',
+      showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: Text('Assign Classes to ${teacher['name']}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: allClasses.map((classData) {
+                  final classId = classData['_id'] ?? ''; // Use class ID
+                  final className = classData['name'] ?? 'Unknown Class';
+                  return CheckboxListTile(
+                    title: Text(className),
+                    value: selectedClassIds.contains(classId),
+                    onChanged: (bool? value) {
+                      setState(() {
+                        if (value == true) {
+                          selectedClassIds.add(classId);
+                        } else {
+                          selectedClassIds.remove(classId);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
               ),
-              maxLines: 5,
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (messageController.text.isEmpty) {
-                return;
-              }
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  try {
+                    Navigator.pop(context);
+                    setState(() => _isLoading = true);
 
-              // In a real app, this would send the message
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Message sent to ${teacher['name']}')),
-              );
-            },
-            child: const Text('Send'),
+                    await _teacherService.updateTeacherAssignments(
+                      id: teacher['id'].toString(),
+                      classIds: selectedClassIds.toList(), // Pass class IDs in the required format
+                    );
+
+                    await _refreshTeachers();
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Classes assigned successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    setState(() => _isLoading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to assign classes: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load classes: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showDeleteConfirmationDialog(Map<String, dynamic> teacher) {
@@ -2045,11 +1950,11 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               try {
-                final teacherIdToDelete = teacher['id'].toString(); // This 'id' is now MongoDB '_id'
+                final teacherIdToDelete = teacher['id'].toString();
                 Navigator.pop(context);
                 setState(() => _isLoading = true);
                 
-                await _teacherService.deleteTeacher(teacherIdToDelete); // Pass _id to the service
+                await _teacherService.deleteTeacher(teacherIdToDelete);
                 await _refreshTeachers();
                 
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2075,86 +1980,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
     );
   }
 
-  void _showManageRolesDialog(Map<String, dynamic> teacher) async {
-    final availableRoles = [
-      'SubjectTeacher', 
-      'ClassTeacher',
-      'DepartmentHead',
-      'HeadTeacher',
-    ];
-    
-    String selectedRole = (teacher['roles'] as List<dynamic>).isNotEmpty 
-        ? teacher['roles'][0] 
-        : 'SubjectTeacher';
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text('Manage Role for ${teacher['name']}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Select a role for this teacher:',
-                style: TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 16),
-              ...availableRoles.map((role) => RadioListTile<String>(
-                title: Text(_formatRoleForDisplay(role)),
-                value: role,
-                groupValue: selectedRole,
-                onChanged: (String? value) {
-                  setState(() {
-                    selectedRole = value ?? 'SubjectTeacher';
-                  });
-                },
-              )).toList(),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  Navigator.pop(context);
-                  setState(() => _isLoading = true);
-                  
-                  final teacherIdToUpdateRole = teacher['id'].toString(); // This 'id' is now MongoDB '_id'
-                  
-                  // await _teacherService.assignRole(
-                  //   _id: teacherIdToUpdateRole, // Pass _id to the service
-                  //   role: selectedRole,
-                  // );
-                  
-                  await _refreshTeachers();
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Role updated successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } catch (e) {
-                  setState(() => _isLoading = false);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Failed to update role: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
   
   void _showTeacherPerformance(Map<String, dynamic> teacher) async {
     setState(() => _isLoading = true);
@@ -2213,15 +2038,9 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> {
       case 'edit':
         _showEditTeacherDialog(teacher);
         break;
-      case 'roles':
-        _showManageRolesDialog(teacher);
-        break;
-      case 'assign':
-        _showAssignClassesDialog(teacher);
-        break;
-      case 'message':
-               _showSendMessageDialog(teacher);
-        break;
+      // case 'assign':
+      //   _showAssignClassesDialog(teacher);
+      //   break;
       case 'performance':
         _showTeacherPerformance(teacher);
         break;

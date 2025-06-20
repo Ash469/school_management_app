@@ -572,150 +572,158 @@ class _StudentDashboardState extends State<StudentDashboard> with SingleTickerPr
           ),
           
           // Bottom fixed logout button
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.grey.shade300)),
-            ),
-            child: _buildDrawerItem(Icons.logout, 'Logout', () {
-              // Show confirmation dialog before logout
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: const Text('Confirm Logout'),
-                    content: const Text('Are you sure you want to log out?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: Text('Cancel', style: TextStyle(color: _accentColor)),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          // Close dialog first to avoid context issues
-                          Navigator.of(context).pop();
-
-                          // Store the current BuildContext
-                          final currentContext = context;
-                          
-                          // Check if still mounted before showing loading dialog
-                          if (mounted) {
-                            // Show loading indicator
-                            showDialog(
-                              context: currentContext,
-                              barrierDismissible: false,
-                              builder: (BuildContext dialogContext) => Dialog(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      CircularProgressIndicator(color: _primaryColor),
-                                      const SizedBox(height: 16),
-                                      const Text('Logging out...'),
-                                    ],
+ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.logout, color: Colors.red),
+                ),
+                title: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
+                onTap: () {
+                  // Show confirmation dialog before logout
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext dialogContext) {
+                      return AlertDialog(
+                        title: const Text('Confirm Logout'),
+                        content: const Text('Are you sure you want to log out?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                            },
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              // Close the confirmation dialog first
+                              Navigator.of(dialogContext).pop();
+                              
+                              // Store the current context
+                              final currentContext = context;
+                              
+                              // Check if still mounted before showing loading dialog
+                              if (mounted) {
+                                // Show loading indicator
+                                showDialog(
+                                  context: currentContext,
+                                  barrierDismissible: false,
+                                  builder: (context) => Dialog(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(20),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircularProgressIndicator(color: _primaryColor),
+                                          const SizedBox(height: 16),
+                                          const Text('Logging out...'),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            );
-                          }
+                                );
+                              }
 
-                          try {
-                            // Delete FCM token from server
-                            final fcmService = FCMService();
-                            await fcmService.deleteFCMTokenFromServer(widget.user.id);
-                            
-                            // Clear user auth credentials
-                            await StorageUtil.setString('accessToken', '');
-                            await StorageUtil.setString('refreshToken', '');
+                              try {
+                                // Delete FCM token from server
+                                final fcmService = FCMService();
+                                await fcmService.deleteFCMTokenFromServer(widget.user.id);
+                                
+                                // Clear user auth credentials and other storage
+                                await StorageUtil.setString('accessToken', '');
+                                await StorageUtil.setString('refreshToken', '');
 
-                            // Clear user profile information
-                            await StorageUtil.setString('userId', '');
-                            await StorageUtil.setString('userEmail', '');
-                            await StorageUtil.setString('userRole', '');
-                            await StorageUtil.setString('userFirstName', '');
-                            await StorageUtil.setString('userLastName', '');
-                            await StorageUtil.setString('userPhone', '');
-                            await StorageUtil.setString('userAddress', '');
-                            await StorageUtil.setString('userProfilePic', '');
+                                // Clear user profile information
+                                await StorageUtil.setString('userId', '');
+                                await StorageUtil.setString('userEmail', '');
+                                await StorageUtil.setString('userRole', '');
+                                await StorageUtil.setString('userFirstName', '');
+                                await StorageUtil.setString('userLastName', '');
+                                await StorageUtil.setString('userPhone', '');
+                                await StorageUtil.setString('userAddress', '');
+                                await StorageUtil.setString('userProfilePic', '');
 
-                            // Clear school-related information
-                            await StorageUtil.setString('schoolToken', '');
-                            await StorageUtil.setString('schoolName', '');
-                            await StorageUtil.setString('schoolId', '');
-                            await StorageUtil.setString('schoolAddress', '');
-                            await StorageUtil.setString('schoolPhone', '');
+                                // Clear school-related information
+                                await StorageUtil.setString('schoolToken', '');
+                                await StorageUtil.setString('schoolName', '');
+                                await StorageUtil.setString('schoolId', '');
+                                await StorageUtil.setString('schoolAddress', '');
+                                await StorageUtil.setString('schoolPhone', '');
 
-                            // Set login status to false
-                            await StorageUtil.setBool('isLoggedIn', false);
+                                // Set login status to false
+                                await StorageUtil.setBool('isLoggedIn', false);
 
-                            // Clear SharedPreferences as well
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.clear();
-                            
-                            // Close loading dialog if still mounted
-                            if (mounted) {
-                              Navigator.of(currentContext).pop();
-                            }
-                            
-                            // Navigate to role selection screen after logout
-                            if (mounted) {
-                              Navigator.pushReplacement(
-                                currentContext,
-                                MaterialPageRoute(
+                                // Clear SharedPreferences as well
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.clear();
+                                
+                                // Close loading dialog if still mounted
+                                if (mounted) {
+                                  Navigator.of(currentContext).pop();
+                                }
+                                
+                                // Create navigation destination
+                                final navigationDestination = MaterialPageRoute(
                                   builder: (context) => const RoleSelectionScreen(
                                     schoolName: "",
                                     schoolToken: "",
                                     schoolAddress: "",
                                     schoolPhone: "",
                                   ),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            print('⚠️ Error during logout: $e');
-                            
-                            // Create navigation destination once
-                            final navigationDestination = MaterialPageRoute(
-                              builder: (context) => const RoleSelectionScreen(
-                                schoolName: "",
-                                schoolToken: "",
-                                schoolAddress: "",
-                                schoolPhone: "",
-                              ),
-                            );
-                            
-                            // Only access context if still mounted
-                            if (mounted) {
-                              // Close loading dialog
-                              Navigator.of(currentContext).pop();
-                              
-                              // Show error message
-                              ScaffoldMessenger.of(currentContext).showSnackBar(
-                                SnackBar(
-                                  content: Text('Logout error: $e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                              
-                              // Navigate
-                              Navigator.of(currentContext).pushAndRemoveUntil(
-                                navigationDestination,
-                                (route) => false,
-                              );
-                            }
-                          }
-                        },
-                        child: const Text('Logout', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
+                                );
+                                
+                                // Only navigate if still mounted
+                                if (mounted) {
+                                  // Navigate to role selection screen
+                                  Navigator.of(currentContext).pushAndRemoveUntil(
+                                    navigationDestination,
+                                    (route) => false,
+                                  );
+                                }
+                              } catch (e) {
+                                print('⚠️ Error during logout: $e');
+                                
+                                // Create navigation destination
+                                final navigationDestination = MaterialPageRoute(
+                                  builder: (context) => const RoleSelectionScreen(
+                                    schoolName: "",
+                                    schoolToken: "",
+                                    schoolAddress: "",
+                                    schoolPhone: "",
+                                  ),
+                                );
+                                
+                                // Only access context if still mounted
+                                if (mounted) {
+                                  // Try to close loading dialog
+                                  Navigator.of(currentContext).pop();
+                                  
+                                  // Show error and navigate
+                                  ScaffoldMessenger.of(currentContext).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Logout error: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  
+                                  Navigator.of(currentContext).pushAndRemoveUntil(
+                                    navigationDestination,
+                                    (route) => false,
+                                  );
+                                }
+                              }
+                            },
+                            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
-              );
-            }, color: Colors.red, isLogout: true),
-          ),
+              ),
         ],
       ),
     );

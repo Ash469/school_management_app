@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../school_selection_screen.dart';
 import '../../services/image_service.dart';
+import '../../services/api_service.dart'; // Import API service
+import '../../utils/constants.dart'; // Import constants
 
 class SchoolAdminProfileScreen extends StatefulWidget {
   const SchoolAdminProfileScreen({super.key});
@@ -29,11 +31,13 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
   String? profileImageUrl;
   bool _isUploadingImage = false;
   late ImageService _imageService;
+  late ApiService _apiService; // Add ApiService instance
 
   @override
   void initState() {
     super.initState();
     _imageService = ImageService();
+    _apiService = ApiService(Constants.apiBaseUrl); // Initialize API service
     _loadProfileData();
   }
 
@@ -150,6 +154,45 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
     }
   }
 
+  // Add reset password method
+  Future<void> _resetPassword() async {
+    if (userEmail == null || userEmail!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email address not available'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final response = await _apiService.forgotPassword(userEmail!);
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send reset email: ${response.body}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -159,6 +202,14 @@ class _SchoolAdminProfileScreenState extends State<SchoolAdminProfileScreen> {
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          // Add reset password button
+          IconButton(
+            icon: const Icon(Icons.lock_reset),
+            onPressed: _resetPassword,
+            tooltip: 'Reset Password',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

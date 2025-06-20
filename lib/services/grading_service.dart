@@ -225,10 +225,10 @@ class GradingService {
     }
 
     print('📚 Fetching grades for student: $studentId using /student endpoint');
-    print('📚 Making API call: $baseUrl/student/$studentId');
+    print('📚 Making API call: $baseUrl/grades/student/$studentId');
 
     final response = await http.get(
-      Uri.parse('$baseUrl/student/$studentId'),
+      Uri.parse('$baseUrl/grades/student/$studentId'),
       headers: {
         'Authorization': 'Bearer $token',
       },
@@ -244,31 +244,36 @@ class GradingService {
 
     final data = jsonDecode(response.body);
     print('📚 Full student data with grades: $data');
-    
+
     // Process the response to extract grade information
-    Map<String, dynamic> gradeData = {};
-    
+    Map<String, dynamic> gradeData = {
+      'grades': [],
+      'studentName': '',
+      'studentId': studentId,
+    };
+
     if (data['success'] == true && data['data'] != null) {
-      final studentData = data['data'];
-      
-      // Check if the response contains grades information
-      if (studentData['grades'] != null) {
-        gradeData['grades'] = studentData['grades'];
-      } else if (studentData['academicReport'] != null && 
-                 studentData['academicReport']['grades'] != null) {
-        gradeData['grades'] = studentData['academicReport']['grades'];
+      final gradeDocuments = data['data'] as List<dynamic>;
+
+      for (var gradeDoc in gradeDocuments) {
+        final classInfo = gradeDoc['classId'] as Map<String, dynamic>? ?? {};
+        final entries = gradeDoc['entries'] as List<dynamic>? ?? [];
+
+        for (var entry in entries) {
+          if (entry['studentId'] == studentId) {
+            gradeData['grades'].add({
+              'subject': gradeDoc['subjectId'] ?? 'Unknown Subject',
+              'percentage': entry['percentage'] ?? 0,
+              'className': classInfo['name'] ?? 'Unknown Class',
+              'classGrade': classInfo['grade'] ?? '',
+              'classSection': classInfo['section'] ?? '',
+            });
+          }
+        }
       }
-      
-      // Add other academic information if available
-      if (studentData['academicReport'] != null) {
-        gradeData['academicReport'] = studentData['academicReport'];
-      }
-      
-      gradeData['studentName'] = studentData['name'];
-      gradeData['studentId'] = studentData['_id'] ?? studentId;
     }
-    
-    print('📚 Processed grade data: $gradeData');
+
+  
     return gradeData;
   }
 
@@ -285,6 +290,22 @@ class GradingService {
       count++;
     }
     
+    return count > 0 ? totalPercentage / count : 0.0;
+  }
+
+  /// Helper method to calculate overall percentage
+  static double calculateOverallPercentage(List<Map<String, dynamic>> grades) {
+    if (grades.isEmpty) return 0.0;
+
+    double totalPercentage = 0.0;
+    int count = 0;
+
+    for (var grade in grades) {
+      final percentage = (grade['percentage'] ?? 0).toDouble();
+      totalPercentage += percentage;
+      count++;
+    }
+
     return count > 0 ? totalPercentage / count : 0.0;
   }
 }

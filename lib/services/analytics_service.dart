@@ -1,50 +1,17 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
 import 'class_services.dart';
 
 class AnalyticsService {
   final String baseUrl;
+  final ApiAuthService _authService = ApiAuthService();
   late final ClassService _classService;
 
   AnalyticsService({required this.baseUrl}) {
     _classService = ClassService(baseUrl: baseUrl);
   }
 
-  Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    // Get directly from StorageUtil
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<Map<String, String>> _getHeaders({bool jsonContent = true}) async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    final headers = <String, String>{
-      'Authorization': 'Bearer $token',
-    };
-
-    if (jsonContent) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
-  }
 
   Future<List<Map<String, dynamic>>> getAttendanceAnalytics({
     required String classId,
@@ -52,8 +19,8 @@ class AnalyticsService {
     required String endDate,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -111,15 +78,6 @@ class AnalyticsService {
     }
   }
 
-  // Additional analytics methods can be added here
-  Future<Map<String, dynamic>> getClassAnalytics(String classId) async {
-    try {
-      return await _classService.getClassAnalytics(classId);
-    } catch (e) {
-      print('📊 Error getting class analytics: $e');
-      throw Exception('Error getting class analytics: $e');
-    }
-  }
 
   // Update the existing getGradeAnalytics method to handle the new endpoint format
   Future<Map<String, dynamic>> getGradeAnalytics({
@@ -127,8 +85,8 @@ class AnalyticsService {
     required String subject,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -168,8 +126,8 @@ class AnalyticsService {
     required String endDate,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -206,8 +164,8 @@ class AnalyticsService {
 
   Future<Map<String, dynamic>> getSchoolOverviewAnalytics() async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');

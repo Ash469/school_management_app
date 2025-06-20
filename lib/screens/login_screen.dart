@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 import '../utils/storage_util.dart';
 import '../services/fcm_service.dart';
+import '../services/api_service.dart'; // Add this import
 import 'student_dashboard.dart';
 import 'teacher_dashboard.dart';
 import 'parent_dashboard.dart';
@@ -138,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
       
       try {
         final response = await http.post(
-          Uri.parse('https://nova-backend-tlzr.onrender.com/api/auth/login'),
+          Uri.parse('http://localhost:5000/api/auth/login'),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({
             'email': email,
@@ -147,26 +148,16 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         
         final responseData = json.decode(response.body);
-        
-        // 🔥 CONSOLE LOG THE COMPLETE RESPONSE
-        print('🚀 ==========  AUTH/LOGIN RESPONSE  ==========');
-        print('📡 Status Code: ${response.statusCode}');
-        print('📄 Response Body: ${response.body}');
-        print('📋 Parsed Response Data: $responseData');
-        print('🚀 =========================================');
-        
+            
         if (response.statusCode == 200 && responseData['success'] == true) {
           final userData = responseData['data']['user'];
           final tokens = responseData['data']['tokens'];
           
-          // 🔥 CONSOLE LOG USER DATA
-          print('👤 User Data: $userData');
-          print('🔑 Tokens: $tokens');
-          
           // Store access token and refresh token for future requests
           await StorageUtil.setString('accessToken', tokens['accessToken']);
           await StorageUtil.setString('refreshToken', tokens['refreshToken']);
-          
+          await StorageUtil.setString('schoolId', userData['schoolId']?.toString() ?? '');
+
           // Extract schoolId from user data
           String schoolId = userData['schoolId']?.toString() ?? '';
           print('🏫 Extracted schoolId from user: $schoolId');
@@ -181,7 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
             try {
               print('🔍 Fetching school data for ID: $schoolId');
               final schoolResponse = await http.get(
-                Uri.parse('https://nova-backend-tlzr.onrender.com/api/schools?schoolId=$schoolId'),
+                Uri.parse('http://localhost:5000/api/schools?schoolId=$schoolId'),
                 headers: {
                   'Content-Type': 'application/json',
                   'Authorization': 'Bearer ${tokens['accessToken']}',
@@ -196,31 +187,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 
                 if (schoolResponseData['success'] == true && 
                     schoolResponseData['data'] != null && 
-                    schoolResponseData['data']['schools'] != null &&
-                    schoolResponseData['data']['schools'].isNotEmpty) {
-                  
-                  // Extract school data from the schools array
-                  final fetchedSchoolData = schoolResponseData['data']['schools'][0];
+                    schoolResponseData['data']['school'] != null &&
+                    schoolResponseData['data']['school'].isNotEmpty) {
+                  // Extract school data from the school object
+                  final fetchedSchoolData = schoolResponseData['data']['school'];
                   
                   // Map the response fields to our storage
-                  schoolToken = fetchedSchoolData['secretKey'] ?? ''; // Using secretKey as token
+                  schoolToken = fetchedSchoolData['secretKey'] ?? ''; 
                   schoolName = fetchedSchoolData['name'] ?? 'Unknown School';
                   schoolAddress = fetchedSchoolData['address'] ?? '';
                   schoolPhone = fetchedSchoolData['phone'] ?? '';
-                  
-                  print('✅ Successfully fetched school data:');
-                  print('✅ School Name: $schoolName');
-                  print('✅ School Token (secretKey): $schoolToken');
-                  print('✅ School Address: $schoolAddress');
-                  print('✅ School Phone: $schoolPhone');
-                  print('✅ School ID: ${fetchedSchoolData['_id']}');
-                  print('✅ School Email: ${fetchedSchoolData['email']}');
-                  print('✅ Teachers: ${fetchedSchoolData['teachers']}');
-                  print('✅ Students: ${fetchedSchoolData['students']}');
-                  print('✅ Classes: ${fetchedSchoolData['classes']}');
-                  print('✅ Parents: ${fetchedSchoolData['parents']}');
-                  print('✅ Admins: ${fetchedSchoolData['admins']}');
-                  
+
                   // Store additional school data that might be useful
                   await StorageUtil.setString('schoolEmail', fetchedSchoolData['email'] ?? '');
                   await StorageUtil.setString('schoolSecretKey', fetchedSchoolData['secretKey'] ?? '');
@@ -242,21 +219,11 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           }
           
-          // Store school data (fetched or defaults)
-          await StorageUtil.setString('schoolToken', schoolToken);
+
           await StorageUtil.setString('schoolName', schoolName);
-          await StorageUtil.setString('schoolId', schoolId);
           await StorageUtil.setString('schoolAddress', schoolAddress);
           await StorageUtil.setString('schoolPhone', schoolPhone);
           
-          print('💾 STORED SCHOOL VALUES:');
-          print('💾 schoolToken: $schoolToken');
-          print('💾 schoolName: $schoolName');
-          print('💾 schoolId: $schoolId');
-          print('💾 schoolAddress: $schoolAddress');
-          print('💾 schoolPhone: $schoolPhone');
-          
-          // Verification checks
           bool roleMatches = userData['role'] == _selectedRole;
           
           if (!roleMatches) {
@@ -364,7 +331,6 @@ class _LoginScreenState extends State<LoginScreen> {
             
             // 🔥 FINAL VERIFICATION - LOG ALL STORED VALUES
             print('🔍 FINAL VERIFICATION - ALL STORED VALUES:');
-            final finalSchoolToken = await StorageUtil.getString('schoolToken');
             final finalSchoolName = await StorageUtil.getString('schoolName');
             final finalSchoolId = await StorageUtil.getString('schoolId');
             final finalSchoolAddress = await StorageUtil.getString('schoolAddress');
@@ -381,7 +347,6 @@ class _LoginScreenState extends State<LoginScreen> {
             final finalUserRole = await StorageUtil.getString('userRole');
             final finalIsLoggedIn = await StorageUtil.getBool('isLoggedIn');
             
-            print('✅ Final schoolToken: $finalSchoolToken');
             print('✅ Final schoolName: $finalSchoolName');
             print('✅ Final schoolId: $finalSchoolId');
             print('✅ Final schoolAddress: $finalSchoolAddress');
@@ -459,7 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       
       final response = await http.post(
-        Uri.parse('https://nova-backend-tlzr.onrender.com/api/fcm/token'),
+        Uri.parse('http://localhost:5000/api/fcm/token'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
@@ -472,6 +437,109 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       print('⚠️ Error registering FCM token with server: $e');
     }
+  }
+  
+  // Add method to handle forgot password
+  void _showForgotPasswordDialog() {
+    final TextEditingController emailController = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Forgot Password'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter your email address and we\'ll send you a link to reset your password.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your email';
+                    }
+                    if (!value.contains('@') || !value.contains('.')) {
+                      return 'Please enter a valid email';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.0,
+                    ),
+                  )
+                : TextButton(
+                    onPressed: () async {
+                      if (formKey.currentState!.validate()) {
+                        setState(() {
+                          isLoading = true;
+                        });
+                        
+                        try {
+                          final apiService = ApiService(Constants.apiBaseUrl);
+                          final response = await apiService.forgotPassword(emailController.text.trim());
+                          final responseData = json.decode(response.body);
+                          
+                          Navigator.pop(context); // Close the dialog
+                          
+                          if (response.statusCode == 200 && responseData['success'] == true) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Password reset link sent. Please check your email.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else {
+                            String errorMessage = responseData['message'] ?? 'Failed to send reset link';
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(errorMessage),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          Navigator.pop(context); // Close dialog on error
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: ${e.toString()}'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    child: const Text('Submit'),
+                  ),
+          ],
+        ),
+      ),
+    );
   }
   
   @override
@@ -634,14 +702,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {
-                // Navigate to forgot password screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Forgot password functionality will be implemented soon'),
-                  ),
-                );
-              },
+              onPressed: _showForgotPasswordDialog, // Update this line
               child: const Text('Forgot Password?'),
             ),
           ),

@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'utils/storage_util.dart';
-// import 'screens/school_selection_screen.dart';
 import 'screens/role_selection_screen.dart';
 import 'utils/app_theme.dart';
 import 'models/user_model.dart';
@@ -41,22 +40,17 @@ void main() async {
 
   try {
     if (!_isAppInitialized) {
-      print('🔄 App initialization started (first time)');
       _isAppInitialized = true;
       await StorageUtil.setString('app_initialized', DateTime.now().toString());
-      final verifyValue = await StorageUtil.getString('app_initialized');
-      print('🔍 Verification write/read test: ${verifyValue != null ? "SUCCESS" : "FAILED"}');
-      
       // Dump all stored values for debugging
       await StorageUtil.debugDumpAll();
     } else {
-      print('🔄 Skipping duplicate initialization on hot reload');
-      // Just reinitialize StorageUtil without any other operations
       await StorageUtil.init();
     }
   } catch (e) {
-    print('⚠️ Error during initialization: $e');
-    // Continue with app launch even if initialization fails
+    if (kDebugMode) {
+      print('⚠️ Error initializing storage: $e');
+    }
   }
   
   runApp(const MyApp());
@@ -72,8 +66,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // Use a completer to handle the initialization once
-  final Completer<bool> _initCompleter = Completer<bool>();
-  bool _initStarted = false;
 
   @override
   void initState() {
@@ -97,8 +89,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    print('🔄 App lifecycle state changed to: $state');
-    // Reinitialize storage when app resumes from background
+    if (kDebugMode) {
+      print('🔄 App lifecycle state changed: $state');
+    }
     if (state == AppLifecycleState.resumed) {
       StorageUtil.init();
     }

@@ -1,67 +1,35 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
 
 class StudentService {
   final String baseUrl;
+  final ApiAuthService _authService = ApiAuthService();
 
   StudentService({required this.baseUrl});
 
-  Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    // Get directly from StorageUtil
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<String?> _getSchoolSecretKey() async {
-    return await StorageUtil.getString('schoolSecretKey');
-  }
-
-  Future<Map<String, String>> _getHeaders({bool jsonContent = true}) async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    final headers = <String, String>{
-      'Authorization': 'Bearer $token',
-    };
-
-    if (jsonContent) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
-  }
-
+ 
   /// Create user account via auth/signup
   Future<Map<String, dynamic>> createUserAccount({
     required String name,
     required String email,
+    required String phone,
+    required String gender,
+    required String dob,
     required String password,
     required String studentId,
     required String classId,
     required String schoolId,
   }) async {
     try {
-      // Only send the required fields for /auth/signup
       final Map<String, dynamic> signupData = {
         'name': name,
         'email': email,
         'password': password,
         'role': 'student',
+        'phone': phone,
+        'dob': dob,
+        'gender': gender,
         'studentId': studentId,
         'classId': classId,
         'schoolId': schoolId,
@@ -77,17 +45,13 @@ class StudentService {
         body: body,
       );
 
-      print('👤 Create student user account response status: ${response.statusCode}');
-
       if (response.statusCode == 201 || response.statusCode == 200) {
         print('👤 Student user account created successfully: ${response.body}');
         return json.decode(response.body);
       } else {
-        print('👤 Error response body: ${response.body}');
         throw Exception('Failed to create student user account: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      print('👤 Error creating student user account: $e');
       throw Exception('Error creating student user account: $e');
     }
   }
@@ -95,8 +59,8 @@ class StudentService {
   /// Get all students
   Future<List<Map<String, dynamic>>> getAllStudents({String? classId, int page = 1, int limit = 20}) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -108,8 +72,7 @@ class StudentService {
         'page': page.toString(),
         'limit': limit.toString(),
       };
-      
-      // Add classId if provided
+
       if (classId != null && classId.isNotEmpty) {
         queryParams['classId'] = classId;
       }
@@ -133,7 +96,6 @@ class StudentService {
         final jsonResponse = json.decode(response.body);
 
         List<dynamic> data;
-        // Check if response has success and data fields (new API format)
         if (jsonResponse is Map<String, dynamic> &&
             jsonResponse.containsKey('success') &&
             jsonResponse.containsKey('data')) {
@@ -169,8 +131,8 @@ class StudentService {
   /// Get a student by ID
   Future<Map<String, dynamic>> getStudentById(String studentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -239,8 +201,8 @@ class StudentService {
     List<Map<String, dynamic>>? parents,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      final schoolSecretKey = await _getSchoolSecretKey();
+      final schoolId = await _authService.getSchoolId();
+      final schoolSecretKey = await _authService.getSchoolSecretKey();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -274,14 +236,13 @@ class StudentService {
         'studentId': studentId,
         'classId': classId,
         'schoolId': schoolId,
-        'gender':gender,
-        'dob': dob,
-        'phone':phone,
+        'gender': gender, // Ensure gender is included
+        'dob': dob,       // Ensure dob is included
+        'phone': phone,
         'parents': processedParents,
       };
 
       // Add optional fields if provided
-      
       if (address != null && address.isNotEmpty) signupData['address'] = address;
 
       final body = json.encode(signupData);
@@ -333,8 +294,8 @@ class StudentService {
     List<Map<String, dynamic>>? parents,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -397,8 +358,8 @@ class StudentService {
   /// Delete a student
   Future<void> deleteStudent(String studentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -425,8 +386,8 @@ class StudentService {
   /// Get student's academic progress
   Future<Map<String, dynamic>> getStudentProgress(String studentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -473,61 +434,12 @@ class StudentService {
     }
   }
 
-  /// Get all students (alternative method)
-  Future<List<Map<String, dynamic>>> getAllStudentsAlt({String? classId}) async {
-    try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-
-      if (schoolId == null || schoolId.isEmpty) {
-        throw Exception('School ID not found');
-      }
-
-      // Build URL with optional classId filter
-      String url = '$baseUrl/students?schoolId=$schoolId';
-      if (classId != null && classId.isNotEmpty) {
-        url += '&classId=$classId';
-      }
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: headers,
-      );
-
-      print('👨‍🎓 Student response status: ${response.statusCode}');
-      
-      if (response.statusCode == 200) {
-        final jsonResponse = json.decode(response.body);
-        
-        // Handle the new response format with success and data fields
-        if (jsonResponse is Map<String, dynamic> && 
-            jsonResponse.containsKey('success') && 
-            jsonResponse.containsKey('data')) {
-          final List<dynamic> data = jsonResponse['data'];
-          return data.map((item) => item as Map<String, dynamic>).toList();
-        }
-        
-        // Handle the old format where response is directly an array
-        if (jsonResponse is List) {
-          return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
-        }
-        
-        throw Exception('Unexpected response format');
-      } else {
-        print('👨‍🎓 Error response: ${response.body}');
-        throw Exception('Failed to load students: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('👨‍🎓 Error getting students: $e');
-      throw Exception('Error getting students: $e');
-    }
-  }
-
+ 
   /// Get students by parent ID
   Future<List<Map<String, dynamic>>> getStudentsByParentId(String parentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -571,3 +483,4 @@ class StudentService {
     }
   }
 }
+

@@ -1,44 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/assignment_model.dart';
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
+
 
 class AssignmentService {
   static const String baseUrl = 'https://nova-backend-tlzr.onrender.com/api/assignments';
-  
-  static Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  static Future<String?> _getSchoolId() async {
-    return await StorageUtil.getString('schoolId');
-  }
-
-  static Future<Map<String, String>> _getHeaders({bool jsonContent = true}) async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    final headers = <String, String>{
-      'Authorization': 'Bearer $token',
-    };
-
-    if (jsonContent) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
-  }
+  static final ApiAuthService _authService = ApiAuthService();
   
   // Get all assignments with optional filters
   static Future<List<Assignment>> getAssignments({
@@ -46,7 +14,7 @@ class AssignmentService {
     String? teacherId,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
+      final schoolId = await _authService.getSchoolId();
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
@@ -59,7 +27,7 @@ class AssignmentService {
       final url = '$baseUrl?${queryParams.join('&')}';
       print('📝 Get assignments URL: $url');
 
-      final headers = await _getHeaders();
+      final headers = await _authService.getHeaders();
       final response = await http.get(Uri.parse(url), headers: headers);
 
       print('📝 Get assignments response status: ${response.statusCode}');
@@ -82,9 +50,9 @@ class AssignmentService {
   // Create a new assignment
   static Future<Assignment> createAssignment(Assignment assignment) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
@@ -133,9 +101,9 @@ class AssignmentService {
   // Get assignment by ID
   static Future<Assignment> getAssignmentById(String assignmentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
@@ -161,9 +129,9 @@ class AssignmentService {
   // Update assignment
   static Future<Assignment> updateAssignment(String assignmentId, Map<String, dynamic> updates) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
@@ -203,9 +171,9 @@ class AssignmentService {
   // Delete assignment
   static Future<void> deleteAssignment(String assignmentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
@@ -225,9 +193,9 @@ class AssignmentService {
   // Get submissions for an assignment
   static Future<List<Submission>> getAssignmentSubmissions(String assignmentId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }
@@ -259,9 +227,9 @@ class AssignmentService {
     String feedback
   ) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
-      
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found. Please log in again.');
       }

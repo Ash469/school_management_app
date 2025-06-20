@@ -1,6 +1,6 @@
 class Constants {
   // API configuration
-  static const String apiBaseUrl = 'https://nova-backend-tlzr.onrender.com/api'; // Replace with actual API URL
+  static const String apiBaseUrl = 'http://localhost:5000/api'; // Replace with actual API URL
 
   // Notification audience constants
   static const String audienceAllStudents = 'all_students';

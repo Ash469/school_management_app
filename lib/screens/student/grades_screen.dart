@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../utils/app_theme.dart';
 import '../../services/grading_service.dart';
+// ignore: unused_import
 import '../../services/student_service.dart';
 import '../../utils/constants.dart'; // Import constants for base URL 
 
 class GradesScreen extends StatefulWidget {
   final User user;
 
-  const GradesScreen({Key? key, required this.user}) : super(key: key);
+  const GradesScreen({super.key, required this.user});
 
   @override
   State<GradesScreen> createState() => _GradesScreenState();
@@ -19,10 +20,7 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
   bool _isLoading = true;
   String? _error;
   List<Map<String, dynamic>> _grades = [];
-  Map<String, List<Map<String, dynamic>>> _progressData = {};
   late GradingService _gradingService;
-  late StudentService _studentService;
-  String? _studentId; // Store the actual student ID from API
   
   // Theme colors
   late Color _accentColor;
@@ -52,7 +50,6 @@ class _GradesScreenState extends State<GradesScreen> with SingleTickerProviderSt
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _gradingService = GradingService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
-    _studentService = StudentService(baseUrl: Constants.apiBaseUrl); // Use Constants for base URL
     _loadThemeColors();
     _loadGradeData();
   }

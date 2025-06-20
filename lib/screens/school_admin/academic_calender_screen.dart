@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
 import '../../services/calendar_service.dart';
-import '../../utils/constants.dart'; // Import constants for base URL
+import '../../utils/constants.dart'; 
 
 class CalendarEvent {
   final String id;
@@ -788,14 +784,13 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
         onPressed: _showAddEventDialog,
         backgroundColor: theme.primaryColor,
         elevation: 4,
-        child: const Icon(Icons.add),
         tooltip: 'Add Event',
+        child: const Icon(Icons.add),
       ),
     );
   }
 
   Widget _buildCategoryLegend() {
-    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: SingleChildScrollView(
@@ -1518,213 +1513,5 @@ class _AcademicCalenderScreenState extends State<AcademicCalenderScreen> {
         ],
       ),
     );
-  }
-
-  Future<void> _shareCalendar() async {
-    // Show sharing options
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.people),
-            title: const Text('Share with Teachers'),
-            onTap: () {
-              Navigator.pop(context);
-              _generateAndSharePdf('Teachers');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.school),
-            title: const Text('Share with Students'),
-            onTap: () {
-              Navigator.pop(context);
-              _generateAndSharePdf('Students');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.family_restroom),
-            title: const Text('Share with Parents'),
-            onTap: () {
-              Navigator.pop(context);
-              _generateAndSharePdf('Parents');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.group),
-            title: const Text('Share with All'),
-            onTap: () {
-              Navigator.pop(context);
-              _generateAndSharePdf('All');
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _generateAndSharePdf(String audience) async {
-    // Create a PDF document
-    final pdf = pw.Document();
-
-    // Group events by month for a more organized view
-    final Map<int, List<CalendarEvent>> eventsByMonth = {};
-    
-    // Flatten the events map to get all events
-    final List<CalendarEvent> allEvents = [];
-    _events.forEach((key, value) {
-      allEvents.addAll(value);
-    });
-    
-    // Sort events by date
-    allEvents.sort((a, b) => a.date.compareTo(b.date));
-    
-    // Group by month
-    for (final event in allEvents) {
-      final int monthKey = event.date.month;
-      if (!eventsByMonth.containsKey(monthKey)) {
-        eventsByMonth[monthKey] = [];
-      }
-      eventsByMonth[monthKey]!.add(event);
-    }
-
-    // Add a title page to the PDF
-    pdf.addPage(
-      pw.Page(
-        build: (pw.Context context) {
-          return pw.Center(
-            child: pw.Column(
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                pw.Text(
-                  'Academic Calendar',
-                  style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold),
-                ),
-                pw.SizedBox(height: 20),
-                pw.Text(
-                  'School Year ${DateTime.now().year}-${DateTime.now().year + 1}',
-                  style: const pw.TextStyle(fontSize: 20),
-                ),
-                pw.SizedBox(height: 40),
-                pw.Text(
-                  'Shared with: $audience',
-                  style: const pw.TextStyle(fontSize: 16, color: PdfColors.grey),
-                ),
-                pw.SizedBox(height: 60),
-                pw.Text(
-                  'Generated on ${DateFormat('MMMM dd, yyyy').format(DateTime.now())}',
-                  style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-
-    // Add the calendar pages to the PDF
-    pdf.addPage(
-      pw.MultiPage(
-        header: (pw.Context context) {
-          return pw.Header(
-            level: 0,
-            child: pw.Text(
-              'Academic Calendar ${DateTime.now().year}-${DateTime.now().year + 1}',
-              style: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          );
-        },
-        build: (pw.Context context) {
-          final List<pw.Widget> widgets = [];
-          
-          final List<int> sortedMonths = eventsByMonth.keys.toList()..sort();
-          
-          for (final month in sortedMonths) {
-            // Add month header
-            widgets.add(
-              pw.Header(
-                level: 1,
-                text: DateFormat('MMMM yyyy').format(DateTime(DateTime.now().year, month)),
-              ),
-            );
-            
-            // Add events for this month
-            for (final event in eventsByMonth[month]!) {
-              final PdfColor eventColor = _getPdfColorForCategory(event.category);
-              
-              widgets.add(
-                pw.Container(
-                  margin: const pw.EdgeInsets.only(bottom: 8),
-                  padding: const pw.EdgeInsets.all(8),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: eventColor, width: 1),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text(
-                            DateFormat('MMM dd, yyyy (EEEE)').format(event.date),
-                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: eventColor),
-                          ),
-                          pw.Text(
-                            event.category.displayName,
-                            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
-                          ),
-                        ],
-                      ),
-                      pw.SizedBox(height: 4),
-                      pw.Text(
-                        event.title,
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14),
-                      ),
-                      if (event.description.isNotEmpty) ...[
-                        pw.SizedBox(height: 4),
-                        pw.Text(event.description),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            }
-            
-            // Add spacer between months
-            widgets.add(pw.SizedBox(height: 20));
-          }
-          
-          return widgets;
-        },
-      ),
-    );
-
-    // Save the PDF to a temporary file
-    final output = await getTemporaryDirectory();
-    final file = File('${output.path}/academic_calendar.pdf');
-    await file.writeAsBytes(await pdf.save());
-
-    // Share the PDF
-    // await Share.shareFiles([file.path], text: 'Academic Calendar for School Year ${DateTime.now().year}-${DateTime.now().year + 1}');
-  }
-
-  PdfColor _getPdfColorForCategory(EventCategory category) {
-    switch (category) {
-      case EventCategory.holiday:
-        return PdfColors.green;
-      case EventCategory.exam:
-        return PdfColors.red;
-      case EventCategory.schoolEvent:
-        return PdfColors.purple;
-      case EventCategory.academicActivity:
-        return PdfColors.blue;
-      case EventCategory.other:
-        return PdfColors.grey;
-    }
   }
 }

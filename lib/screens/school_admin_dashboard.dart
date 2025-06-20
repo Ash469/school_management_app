@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // Add this for kDebugMode
+import 'package:flutter/foundation.dart'; 
 import 'package:image_picker/image_picker.dart';
 import 'package:school_app/screens/role_selection_screen.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart'; 
 import '../models/user_model.dart';
 import '../models/school_model.dart';
+import 'package:flutter/src/material/scaffold.dart';
 import '../utils/app_theme.dart';
 import '../utils/storage_util.dart'; 
 import '../services/fcm_service.dart';

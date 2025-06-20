@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import '../../services/teacher_service.dart';
 import '../../services/image_service.dart';
+import '../../services/api_service.dart'; // Import ApiService
 import '../../utils/app_theme.dart';
 import '../../utils/constants.dart'; // Import constants for base URL
 
@@ -25,6 +26,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
   bool _isResettingPassword = false;
   bool _isUploadingImage = false;
   Map<String, dynamic>? _teacherData;
+  late ApiService _apiService; // Add ApiService instance
   late TeacherService _teacherService;
   late ImageService _imageService;
   String? _profileImageUrl;
@@ -34,6 +36,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
     super.initState();
     _teacherService = TeacherService(baseUrl: Constants.apiBaseUrl); // Use the constant for base URL
     _imageService = ImageService();
+     _apiService = ApiService(Constants.apiBaseUrl); // Initialize ApiService
     _loadThemeColors();
     _loadTeacherProfile();
     _loadProfileImageFromPrefs();
@@ -116,88 +119,32 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
     }
   }
 
+
   Future<void> _resetPassword() async {
-    // Show confirmation dialog first
-    final bool? shouldReset = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Reset Password'),
-          content: const Text(
-            'Are you sure you want to reset your password? A new temporary password will be generated and you will need to change it on next login.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
-              child: const Text('Reset Password'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldReset != true) return;
-
-    setState(() {
-      _isResettingPassword = true;
-    });
-
     try {
-      print('🔑 Resetting password for teacher ID: ${widget.user.id}');
-      
-      // Call the password reset API
-      await _teacherService.resetTeacherPassword(widget.user.id);
-      
-      if (mounted) {
-        // Show success dialog
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              icon: Icon(Icons.check_circle, color: Colors.green, size: 48),
-              title: const Text('Password Reset Successful'),
-              content: const Text(
-                'Your password has been reset successfully. A new temporary password has been generated. Please check your email for the new password and change it on your next login.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    // Optionally navigate back or show login screen
-                  },
-                  child: const Text('OK'),
-                ),
-              ],
-            );
-          },
+      final response = await _apiService.forgotPassword(widget.user.email);
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send reset email: ${response.body}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e) {
-      print('🔑 Error resetting password: $e');
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to reset password: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isResettingPassword = false;
-        });
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -285,26 +232,11 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           actions: [
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (String value) {
-                if (value == 'reset_password') {
-                  _resetPassword();
-                }
-              },
-              itemBuilder: (BuildContext context) => [
-                PopupMenuItem<String>(
-                  value: 'reset_password',
-                  child: Row(
-                    children: [
-                      Icon(Icons.lock_reset, color: Colors.orange),
-                      const SizedBox(width: 8),
-                      const Text('Reset Password'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            IconButton(
+            icon: const Icon(Icons.lock_reset),
+            onPressed: _resetPassword, // Add reset password button
+            tooltip: 'Reset Password',
+          ),
           ],
         ),
         body: _isLoading ? _buildLoadingView() : _buildProfileView(),

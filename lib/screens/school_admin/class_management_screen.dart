@@ -5,6 +5,7 @@ import '../../services/class_services.dart';
 import '../../services/teacher_service.dart'; 
 import '../../utils/storage_util.dart'; 
 import '../../utils/constants.dart'; 
+import './analytic_dashboard.dart';
 
 class ClassManagementScreen extends StatefulWidget {
   final User user;
@@ -486,33 +487,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
           ),
         ),
         actions: [
-          // Add filter button to app bar
-          IconButton(
-            icon: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(Icons.filter_list, color: Colors.white),
-                if (_activeFilters.values.contains(true))
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 10,
-                        minHeight: 10,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            tooltip: 'Filter Classes',
-            onPressed: _showFilterDialog,
-          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _refreshClasses,
@@ -527,48 +501,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   onRefresh: _refreshClasses,
                   color: _primaryColor,
                   child: Column(
-                    children: [
-                      // Search bar with improved design
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                        child: TextField(
-                          onChanged: (value) {
-                            _searchQuery = value;
-                            _filterClasses();
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Search classes, teachers, subjects...',
-                            prefixIcon: Icon(Icons.search, color: _accentColor),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() {
-                                        _searchQuery = '';
-                                        _filterClasses();
-                                      });
-                                    },
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: _primaryColor),
-                            ),
-                          ),
-                        ),
-                      ),
-                      
+                    children: [                      
                       // Active filters chips
                       if (_activeFilters.values.contains(true))
                         Container(
@@ -785,11 +718,11 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
               
               // Extract class teacher from data or use placeholder
               String classTeacherName = 'Not Assigned';
-              if (classData.containsKey('classTeacher')) {
-                if (classData['classTeacher'] is String) {
-                  classTeacherName = classData['classTeacher'];
-                } else if (classData['classTeacher'] is Map) {
-                  classTeacherName = classData['classTeacher']['name'] ?? 'Not Assigned';
+              if (classData.containsKey('teachers') && classData['teachers'] is List && classData['teachers'].isNotEmpty) {
+                if (classData['teachers'][0] is String) {
+                  classTeacherName = classData['teachers'][0];
+                } else if (classData['teachers'][0] is Map) {
+                  classTeacherName = classData['teachers'][0]['name'] ?? 'Not Assigned';
                 }
               }
               
@@ -1081,6 +1014,14 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                     visualDensity: VisualDensity.compact,
                                   ),
                                   IconButton(
+                                    icon: Icon(Icons.book, color: Colors.blue.shade400, size: 20),
+                                    onPressed: () => _showManageSubjectsDialog(classData),
+                                    tooltip: "Manage Subjects",
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(8),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  IconButton(
                                     icon: Icon(Icons.analytics, color: Colors.purple.shade400, size: 20),
                                     onPressed: () => _showClassAnalyticsView(classData),
                                     tooltip: "Analytics",
@@ -1097,7 +1038,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                     ),
                   ),
                 ),
-              );
+                );
             },
           ),
     );
@@ -1256,11 +1197,11 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   void _showClassDetailsDialog(Map<String, dynamic> classData) {
     // Extract class teacher from data
     String classTeacherName = 'Not Assigned';
-    if (classData.containsKey('classTeacher')) {
-      if (classData['classTeacher'] is String) {
-        classTeacherName = classData['classTeacher'];
-      } else if (classData['classTeacher'] is Map) {
-        classTeacherName = classData['classTeacher']['name'] ?? 'Not Assigned';
+    if (classData.containsKey('teachers') && classData['teachers'] is List && classData['teachers'].isNotEmpty) {
+      if (classData['teachers'][0] is String) {
+        classTeacherName = classData['teachers'][0];
+      } else if (classData['teachers'][0] is Map) {
+        classTeacherName = classData['teachers'][0]['name'] ?? 'Not Assigned';
       }
     }
     
@@ -1574,206 +1515,23 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   }
 
   void _showClassAnalyticsView(Map<String, dynamic> classData) async {
-    // Show loading indicator
-    setState(() => _isLoading = true);
-    
     try {
       // Get class ID 
       final String classId = classData['_id'] ?? classData['id'];
       
-      // Fetch analytics data from the API
-      Map<String, dynamic> analytics;
-      
-      try {
-        // Try to fetch analytics, handle potential null response
-        final result = await _classService.getClassAnalytics(classId);
-        analytics = result;
-      } catch (e) {
-        // If there's an error fetching analytics, use default values
-        analytics = {
-          'attendancePct': 0,
-          'avgGrade': 0,
-          'passPct': 0
-        };
-        print('Error fetching analytics: ${e.toString()}');
-      }
-      
-      // Hide loading indicator
-      setState(() => _isLoading = false);
-      
-      // Get theme-appropriate colors for class based on index
-      final int classIndex = _classes.indexOf(classData);
-      final List<Color> gradientColors;
-      switch (classIndex % 4) {
-        case 0:
-          gradientColors = [
-            const Color(0xFF1E88E5),
-            const Color(0xFF42A5F5),
-          ];
-          break;
-        case 1:
-          gradientColors = [
-            const Color(0xFF26A69A),
-            const Color(0xFF4DB6AC),
-          ];
-          break;
-        case 2:
-          gradientColors = [
-            const Color(0xFFFFA000),
-            const Color(0xFFFFCA28),
-          ];
-          break;
-        case 3:
-          gradientColors = [
-            const Color(0xFFAB47BC),
-            const Color(0xFFBA68C8),
-          ];
-          break;
-        default:
-          gradientColors = [
-            const Color(0xFF1E88E5),
-            const Color(0xFF42A5F5),
-          ];
-      }
-
-      showDialog(
-        context: context,
-        builder: (context) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            width: double.maxFinite,
-            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header with gradient
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: gradientColors,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(20),
-                      topRight: Radius.circular(20),
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Analytics: ${classData['name']}',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // Analytics cards
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      // Attendance card
-                      _buildAnalyticsCard(
-                        'Attendance',
-                        '${analytics['attendancePct'] ?? 0}',
-                        Icons.calendar_today,
-                        Colors.blue,
-                        'Average class attendance',
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Average grade card
-                      _buildAnalyticsCard(
-                        'Average Grade',
-                        (analytics['avgGrade'] ?? 0).toString(),
-                        Icons.grade,
-                        Colors.orange,
-                        'Average class grade points',
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Pass percentage card
-                      _buildAnalyticsCard(
-                        'Pass Rate',
-                        '${analytics['passPct'] ?? 0}',
-                        Icons.check_circle,
-                        Colors.green,
-                        'Class passing percentage',
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // Footer
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
-                    ),
-                    border: Border(
-                      top: BorderSide(color: Colors.grey.shade200),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showClassAnalyticsView(classData);
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.download),
-                        label: const Text('Export Report'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primaryColor,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Generating analytics report...')),
-                          );
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      // Navigate to AnalyticsDashboard with the selected class ID
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AnalyticsDashboard(
+            preselectedClassId: classId,
           ),
         ),
-        );
+      );
     } catch (e) {
-      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to load analytics: ${e.toString()}'),
+          content: Text('Failed to navigate to analytics: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1857,34 +1615,26 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   }
 
   void _showManageSubjectsDialog(Map<String, dynamic> classData) async {
-    
-    // Show loading state initially while we fetch current subjects
+    // Show loading state
     setState(() => _isLoading = true);
-    
+
     try {
       final String classId = classData['_id'] ?? classData['id'];
-      
-      // Get current subjects either from the class data or by fetching them
-      List<String> subjects = [];
-      
-      // First try to use the subjects data from the class object
-      if (classData.containsKey('subjects')) {
-        if (classData['subjects'] is List) {
-          subjects = List<String>.from(classData['subjects'].map((subject) {
-            if (subject is String) return subject;
-            if (subject is Map && subject.containsKey('name')) return subject['name'].toString();
-            return "Unknown Subject";
-          }));
-        }
-      } else {
-        // If not in the class data, try to fetch them
-        subjects = await _classService.getClassSubjects(classId);
-      }
-      
+
+      // Fetch all subjects from the school or predefined list
+      final List<String> allSubjects = [
+        'Mathematics', 'Physics', 'Chemistry', 'Biology',
+        'History', 'Geography', 'English', 'Literature',
+        'Computer Science', 'Art', 'Music', 'Physical Education'
+      ];
+
+      // Fetch subjects already assigned to this class
+      final List<String> classSubjects = await _classService.getClassSubjects(classId);
+
       setState(() => _isLoading = false);
-      
-      // Show the dialog with the fetched subjects
-      showSubjectsManagementDialog(classData, subjects);
+
+      // Show the dialog with the fetched data
+      showSubjectsSelectionDialog(classData, allSubjects, classSubjects);
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1896,21 +1646,18 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     }
   }
   
-  void showSubjectsManagementDialog(
+  void showSubjectsSelectionDialog(
     Map<String, dynamic> classData,
-    List<String> initialSubjects
+    List<String> allSubjects,
+    List<String> initialClassSubjects
   ) {
-    // Create a working copy of subjects that we'll modify in the dialog
-    final subjects = List<String>.from(initialSubjects);
-    final subjectsController = TextEditingController();
-    
-    // Common subject suggestions for convenience
-    final List<String> subjectSuggestions = [
-      'Mathematics', 'Physics', 'Chemistry', 'Biology',
-      'History', 'Geography', 'English', 'Literature',
-      'Computer Science', 'Art', 'Music', 'Physical Education'
-    ];
-    
+    // Create a new list to track selected subjects in the dialog
+    final selectedSubjects = List<String>.from(initialClassSubjects);
+
+    // Controller for searching subjects
+    final searchController = TextEditingController();
+    List<String> filteredSubjects = List.from(allSubjects);
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1945,177 +1692,167 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ],
                   ),
                 ),
+                
                 Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Search Subjects',
+                      hintText: 'Enter subject name',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        filteredSubjects = allSubjects.where((subject) {
+                          final query = value.toLowerCase();
+                          return subject.toLowerCase().contains(query);
+                        }).toList();
+                      });
+                    },
+                  ),
+                ),
+                
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      Text(
+                        'All Available Subjects',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _primaryColor,
+                        ),
+                      ),
                       Row(
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: subjectsController,
-                              decoration: InputDecoration(
-                                labelText: 'Add Subject',
-                                hintText: 'Enter subject name',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                              ),
+                          Text(
+                            'Selected: ${selectedSubjects.length}',
+                            style: TextStyle(
+                              color: _accentColor,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
+                          const SizedBox(width: 8),
                           IconButton(
-                            icon: Icon(Icons.add_circle, color: _accentColor),
+                            icon: Icon(Icons.clear_all, color: Colors.grey.shade700),
+                            tooltip: 'Clear all selections',
                             onPressed: () {
-                              if (subjectsController.text.isNotEmpty) {
-                                setState(() {
-                                  subjects.add(subjectsController.text);
-                                  subjectsController.clear();
-                                });
-                              }
+                              setState(() {
+                                selectedSubjects.clear();
+                              });
                             },
-                          )
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      
-                      // Quick subject suggestions
-                      Text(
-                        'Common Subjects:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: subjectSuggestions.map((subject) => FilterChip(
-                          label: Text(subject),
-                          selected: subjects.contains(subject),
-                          onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                if (!subjects.contains(subject)) {
-                                  subjects.add(subject);
-                                }
-                              } else {
-                                subjects.remove(subject);
-                              }
-                            });
-                          },
-                          backgroundColor: Colors.grey.shade100,
-                          selectedColor: _accentColor.withOpacity(0.2),
-                          checkmarkColor: _accentColor,
-                          avatar: subjects.contains(subject) ? Icon(Icons.check, size: 18, color: _accentColor) : null,
-                          labelStyle: TextStyle(
-                            color: subjects.contains(subject) ? _accentColor : Colors.black87,
-                            fontWeight: subjects.contains(subject) ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        )).toList(),
-                      ),
                     ],
                   ),
                 ),
+                
                 const Divider(),
+                
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Current Subjects',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: _primaryColor,
+                  child: filteredSubjects.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.subject,
+                                size: 64,
+                                color: Colors.grey.shade300,
                               ),
-                            ),
-                            Text(
-                              '${subjects.length} subjects',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 14,
+                              const SizedBox(height: 16),
+                              Text(
+                                'No subjects found',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade700,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: subjects.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.subject,
-                                    size: 64,
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No subjects added yet',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Add subjects using the field above',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade400,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
+                              const SizedBox(height: 8),
+                              Text(
+                                searchController.text.isNotEmpty
+                                    ? 'Try using different search terms'
+                                    : 'No subjects have been added to the school yet',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade500,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                            )
-                          : ListView.builder(
-                              itemCount: subjects.length,
-                              itemBuilder: (context, index) {
-                                final subject = subjects[index];
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: _accentColor.withOpacity(0.1),
-                                    child: Text(
-                                      subject[0].toUpperCase(),
-                                      style: TextStyle(
-                                        color: _accentColor,
-                                        fontWeight: FontWeight.bold,
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filteredSubjects.length,
+                          itemBuilder: (context, index) {
+                            final subject = filteredSubjects[index];
+                            final isSelected = selectedSubjects.contains(subject);
+
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isSelected
+                                    ? _accentColor
+                                    : Colors.grey.shade200,
+                                child: isSelected
+                                    ? const Icon(Icons.check, color: Colors.white, size: 20)
+                                    : Text(
+                                        subject.substring(0, 1).toUpperCase(),
+                                        style: TextStyle(
+                                          color: isSelected ? Colors.white : _accentColor,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                  title: Text(subject),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () {
-                                      setState(() {
-                                        subjects.removeAt(index);
-                                      });
-                                    },
-                                  ),
-                                );
+                              ),
+                              title: Text(
+                                subject,
+                                style: TextStyle(
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              trailing: Checkbox(
+                                value: isSelected,
+                                activeColor: _accentColor,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      selectedSubjects.add(subject);
+                                    } else {
+                                      selectedSubjects.remove(subject);
+                                    }
+                                  });
+                                },
+                              ),
+                              onTap: () {
+                                setState(() {
+                                  if (isSelected) {
+                                    selectedSubjects.remove(subject);
+                                  } else {
+                                    selectedSubjects.add(subject);
+                                  }
+                                });
                               },
-                            ),
-                      ),
-                    ],
-                  ),
+                            );
+                          },
+                        ),
                 ),
+                
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -2125,9 +1862,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                       bottomRight: Radius.circular(20),
                     ),
                     border: Border(
-                      top: BorderSide(
-                        color: Colors.grey.shade200,
-                      ),
+                      top: BorderSide(color: Colors.grey.shade200),
                     ),
                   ),
                   child: Row(
@@ -2145,27 +1880,26 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                       ElevatedButton(
                         onPressed: () async {
                           try {
+                            // Get class ID
                             final String classId = classData['_id'] ?? classData['id'];
                             Navigator.pop(context);
-                            
+
                             // Show loading state
                             setState(() => _isLoading = true);
-                            
-                            // Call API to update subjects
-                            final updatedSubjects = await _classService.setClassSubjects(classId, subjects);
-                            
 
-                            // Refresh the class data to show updated information
+                            // Call the API to update subjects
+                            await _classService.setClassSubjects(classId, selectedSubjects);
+
+                            // Refresh class data
                             await _refreshClasses();
-                            
-                            // Show success message with the count of subjects
+
+                            // Show success message
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Successfully updated ${updatedSubjects.length} subjects'),
+                                content: Text('Successfully updated subjects for ${classData['name']}'),
                                 backgroundColor: Colors.green,
                               ),
                             );
-                            
                           } catch (e) {
                             // Show error message
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -2724,8 +2458,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ],

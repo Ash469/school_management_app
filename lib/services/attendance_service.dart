@@ -2,48 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
 
 class AttendanceService {
   final String baseUrl;
-  String? _token;
-
+  final ApiAuthService _authService = ApiAuthService();
   AttendanceService({required this.baseUrl});
 
-  void setAuthToken(String token) {
-    _token = token;
-  }
 
-  Future<String?> _getToken() async {
-    if (_token != null) return _token;
-    
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
 
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    _token = token;
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<Map<String, String>> get _headers async {
-    final token = await _getToken();
-    final headers = {
-      'Content-Type': 'application/json',
-    };
-    if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    return headers;
-  }
-
+  
   /// List all attendance records with optional filters
   /// Query params: classId, date, studentId, schoolId
   Future<List<Map<String, dynamic>>> listAttendance({
@@ -52,8 +20,8 @@ class AttendanceService {
     String? studentId,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -69,7 +37,7 @@ class AttendanceService {
         queryParameters: queryParams,
       );
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.get(uri, headers: headers);
 
       print('📋 List attendance response status: ${response.statusCode}');
@@ -99,8 +67,8 @@ class AttendanceService {
     required List<Map<String, dynamic>> attendanceData,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -117,7 +85,7 @@ class AttendanceService {
       final queryParams = {'schoolId': schoolId};
       final uri = Uri.parse('$baseUrl/attendance').replace(queryParameters: queryParams);
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.post(
         uri,
         headers: headers,
@@ -148,8 +116,8 @@ class AttendanceService {
     required List<Map<String, dynamic>> attendanceData,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -164,7 +132,7 @@ class AttendanceService {
       final queryParams = {'schoolId': schoolId};
       final uri = Uri.parse('$baseUrl/attendance/$attendanceId').replace(queryParameters: queryParams);
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.put(
         uri,
         headers: headers,
@@ -192,8 +160,8 @@ class AttendanceService {
   /// Download attendance report as CSV
   Future<File> downloadAttendanceReport(String attendanceId) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -201,7 +169,7 @@ class AttendanceService {
       final queryParams = {'schoolId': schoolId};
       final uri = Uri.parse('$baseUrl/attendance/$attendanceId/report').replace(queryParameters: queryParams);
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
@@ -227,8 +195,8 @@ class AttendanceService {
     String? endDate,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -243,7 +211,7 @@ class AttendanceService {
         queryParameters: queryParams,
       );
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
@@ -267,8 +235,8 @@ class AttendanceService {
     String? date,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -283,7 +251,7 @@ class AttendanceService {
         queryParameters: queryParams,
       );
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.get(uri, headers: headers);
 
       print('📋 Get class attendance request: $uri');
@@ -359,8 +327,8 @@ class AttendanceService {
   /// Get attendance records for a specific student
   Future<Map<String, dynamic>> getStudentAttendance(String studentId) async {
     try {
-      final schoolId = await _getSchoolId();
-      
+      final schoolId = await _authService.getSchoolId();
+
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
       }
@@ -373,7 +341,7 @@ class AttendanceService {
         queryParameters: queryParams,
       );
 
-      final headers = await _headers;
+      final headers = await _authService.getHeaders();
       final response = await http.get(uri, headers: headers);
 
       print('📋 Get student attendance request: $uri');

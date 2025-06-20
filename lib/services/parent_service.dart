@@ -1,45 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
 
 class ParentService {
   final String baseUrl;
-
+  final ApiAuthService _authService = ApiAuthService();
   ParentService({required this.baseUrl});
 
-  Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    return {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-  }
+  
 
   Future<List<Map<String, dynamic>>> getAllParents() async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');

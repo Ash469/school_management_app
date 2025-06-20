@@ -347,7 +347,6 @@ class _StudentNotificationsScreenState extends State<StudentNotificationsScreen>
           indicatorColor: Colors.white,
           tabs: const [
             Tab(text: 'Received'),
-            Tab(text: 'Sent'),
           ],
         ),
       ),
@@ -371,17 +370,8 @@ class _StudentNotificationsScreenState extends State<StudentNotificationsScreen>
               controller: _tabController,
               children: [
                 _buildReceivedNotificationsTab(),
-                _buildSentNotificationsTab(),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'new_message',
-        onPressed: _showSendMessageOptions,
-        backgroundColor: _accentColor,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-        tooltip: 'Send New Message',
-      ),
     );
   }
   
@@ -404,24 +394,6 @@ class _StudentNotificationsScreenState extends State<StudentNotificationsScreen>
         );
   }
   
-  Widget _buildSentNotificationsTab() {
-    final sentNotifications = _getSentNotifications();
-    
-    return sentNotifications.isEmpty
-      ? _buildEmptyState('No sent notifications')
-      : RefreshIndicator(
-          onRefresh: _loadNotifications,
-          color: _accentColor,
-          child: ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: sentNotifications.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              return _buildNotificationCard(sentNotifications[index]);
-            },
-          ),
-        );
-  }
   
   Widget _buildEmptyState([String message = 'No Notifications']) {
     return Center(

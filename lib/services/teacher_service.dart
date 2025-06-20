@@ -1,55 +1,20 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/storage_util.dart';
+import '../services/api_auth_service.dart';
 
 class TeacherService {
   final String baseUrl;
+  final ApiAuthService _authService = ApiAuthService();
 
   TeacherService({required this.baseUrl});
 
-  Future<String?> _getToken() async {
-    // First try the standard token key
-    String? token = await StorageUtil.getString('accessToken');
-
-    // If not found or empty, try the alternative key
-    if (token == null || token.isEmpty) {
-      token = await StorageUtil.getString('schoolToken');
-    }
-
-    return token;
-  }
-
-  Future<String?> _getSchoolId() async {
-    return await StorageUtil.getString('schoolId');
-  }
-
-  Future<String?> _getSchoolSecretKey() async {
-    return await StorageUtil.getString('schoolSecretKey');
-  }
-
-  Future<Map<String, String>> _getHeaders({bool jsonContent = true}) async {
-    final token = await _getToken();
-
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication token not found. Please log in again.');
-    }
-
-    final headers = <String, String>{
-      'Authorization': 'Bearer $token',
-    };
-
-    if (jsonContent) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
-  }
+  
 
   /// Get all teachers
   Future<List<Map<String, dynamic>>> getAllTeachers() async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -90,8 +55,11 @@ class TeacherService {
         // Filter the teachers to ensure they match the stored schoolId
         final filteredData = data.where((item) {
           if (item is Map<String, dynamic>) {
-            // Check if the teacher has a schoolId field that matches our stored schoolId
-            return item['schoolId'] == schoolId;
+            // Check if the teacher's schoolId matches the stored schoolId
+            final teacherSchoolId = item['schoolId'];
+            if (teacherSchoolId is Map<String, dynamic> && teacherSchoolId['_id'] == schoolId) {
+              return true;
+            }
           }
           return false;
         }).toList();
@@ -110,8 +78,8 @@ class TeacherService {
   /// Get a teacher by ID
   Future<Map<String, dynamic>> getTeacherById(String _id) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null) {
         throw Exception('School ID not found');
@@ -236,7 +204,6 @@ class TeacherService {
   Future<Map<String, dynamic>> createTeacher({
     required String name,
     required String email,
-    required String password,
     required String phone,
     required String dateJoined,
     required String teacherId,
@@ -246,8 +213,8 @@ class TeacherService {
     List<String>? classes,
   }) async {
     try {
-      final schoolId = await _getSchoolId();
-      final schoolSecretKey = await _getSchoolSecretKey();
+      final schoolId = await _authService.getSchoolId();
+      final schoolSecretKey = await _authService.getSchoolSecretKey();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -262,7 +229,7 @@ class TeacherService {
       final result = await createUserAccount(
         name: name,
         email: email,
-        password: password,
+        password: schoolSecretKey,
         schoolId: schoolId,
         schoolSecretKey: schoolSecretKey,
         phone: phone,
@@ -286,14 +253,16 @@ class TeacherService {
   Future<Map<String, dynamic>> updateTeacher({
     required String id, 
     String? name,
+    String? email,
     String? phone,
     bool? salaryPaid,
     List<String>? teachingSubs,
     List<String>? classes,
+    List<String>? roles, // Added roles parameter
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -303,10 +272,12 @@ class TeacherService {
       
       // Only add allowed fields that are provided
       if (name != null) updateData['name'] = name;
+      if (email != null) updateData['email'] = email.toLowerCase(); // Ensure email is lowercase
       if (phone != null) updateData['phone'] = phone;
       if (salaryPaid != null) updateData['salaryPaid'] = salaryPaid;
       if (teachingSubs != null) updateData['teachingSubs'] = teachingSubs;
-      if (classes != null) updateData['classes'] = classes;
+      if (classes != null) updateData['classes'] = classes.map((id) => id).toList(); // Ensure classes are IDs
+      if (roles != null) updateData['roles'] = roles;
 
       final body = json.encode(updateData);
 
@@ -352,8 +323,8 @@ class TeacherService {
   /// Delete a teacher
   Future<void> deleteTeacher(String _id) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -383,8 +354,8 @@ class TeacherService {
     required String role,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -441,8 +412,8 @@ class TeacherService {
   /// Get teacher's performance metrics
   Future<Map<String, dynamic>> getTeacherPerformance(String id) async { // Changed from teacherObjectId
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -494,8 +465,8 @@ class TeacherService {
   /// Get classes taught by a specific teacher
   Future<List<Map<String, dynamic>>> getTeacherClasses(String id) async { // Changed from teacherObjectId
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -543,8 +514,8 @@ class TeacherService {
   /// Get subjects taught by a specific teacher
   Future<List<String>> getTeacherSubjects(String id) async { // Changed from teacherObjectId
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -596,8 +567,8 @@ class TeacherService {
     List<String>? subjectIds,
   }) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -651,8 +622,8 @@ class TeacherService {
   /// Get teachers for a specific class
   Future<List<Map<String, dynamic>>> getTeachersByClass(String classId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
@@ -683,8 +654,8 @@ class TeacherService {
   /// Reset teacher password
   Future<Map<String, dynamic>> resetTeacherPassword(String teacherId) async {
     try {
-      final headers = await _getHeaders();
-      final schoolId = await _getSchoolId();
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
 
       if (schoolId == null || schoolId.isEmpty) {
         throw Exception('School ID not found');
