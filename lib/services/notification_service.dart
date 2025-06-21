@@ -183,6 +183,7 @@ class NotificationService {
       throw Exception('Error sending teacher notification: $e');
     }
   }
+
   Future<bool> sendStudentNotification({
     required String studentId,
     required String message,
@@ -225,6 +226,101 @@ class NotificationService {
     } catch (e) {
       print('👨‍🏫 Error sending student notification: $e');
       throw Exception('Error sending student notification: $e');
+    }
+  }
+
+  Future<bool> sendClassNotification({
+    required String classId,
+    required String message,
+  }) async {
+    try {
+      final headers = await _getHeaders();
+      final schoolId = await _getSchoolId();
+      final userId = await _getCurrentUserId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      // Format request body for class notification
+      final Map<String, dynamic> data = {
+        'message': message,
+        'schoolId': schoolId,
+      };
+      
+      // Add creator ID if available
+      if (userId != null && userId.isNotEmpty) {
+        data['createdBy'] = userId;
+      }
+      
+      print('🏫 Sending class notification: $data');
+
+      // Use the specific class notification endpoint
+      final response = await http.post(
+        Uri.parse('$_baseUrl/notifications/class/$classId'),
+        headers: headers,
+        body: json.encode(data),
+      );
+
+      print('🏫 Send class notification response status: ${response.statusCode}');
+      print('🏫 Response body: ${response.body}');
+
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      print('🏫 Error sending class notification: $e');
+      throw Exception('Error sending class notification: $e');
+    }
+  }
+  /// Send notification to a specific parent
+  Future<bool> sendParentNotification({
+    required String parentId,
+    required String message,
+  }) async {
+    try {
+      // Validate parentId
+      if (parentId.isEmpty) {
+        throw Exception('Parent ID is required');
+      }
+      
+      final headers = await _getHeaders();
+      final schoolId = await _getSchoolId();
+      final userId = await _getCurrentUserId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      // Format request body for parent notification
+      final Map<String, dynamic> data = {
+        'message': message,
+        'schoolId': schoolId,
+      };
+      
+      // Add creator ID if available
+      if (userId != null && userId.isNotEmpty) {
+        data['createdBy'] = userId;
+      }
+      
+      print('👪 Sending parent notification to: $parentId');
+      print('👪 Notification data: $data');
+
+      // Use the specific parent notification endpoint
+      final response = await http.post(
+        Uri.parse('$_baseUrl/notifications/parent/$parentId'),
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(data),
+      );
+
+      print('👪 Send parent notification response status: ${response.statusCode}');
+      print('👪 Response body: ${response.body}');
+
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      print('👪 Error sending parent notification: $e');
+      throw Exception('Error sending parent notification: $e');
     }
   }
 

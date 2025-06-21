@@ -268,29 +268,30 @@ class _SplashScreenState extends State<SplashScreen> {
             ],
           ),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Hero(
+                Hero(
                 tag: 'app_logo',
-                child: CircleAvatar(
-                  radius: 60,
-                  backgroundColor: Colors.blue,
-                  child: Icon(
-                    Icons.school,
-                    size: 60,
-                    color: Colors.white,
+                child: Container(
+                  height: 120,
+                  width: 120,
+                  child: ClipOval(
+                  child: Image.asset(
+                    'images/logo.png',
+                    fit: BoxFit.cover,
+                  ),
                   ),
                 ),
-              ),
+                ),
               SizedBox(height: 24),
               Text(
                 'School Management',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue,
+                  color: Color.fromARGB(255, 127, 131, 134),
                 ),
               ),
               SizedBox(height: 8),

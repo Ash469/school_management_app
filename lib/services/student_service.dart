@@ -482,5 +482,97 @@ class StudentService {
       throw Exception('Error getting students for parent: $e');
     }
   }
+
+  /// Get parents by student ID
+  Future<List<Map<String, dynamic>>> getParentsByStudentId(String studentId) async {
+    try {
+      final headers = await _authService.getHeaders();
+      final schoolId = await _authService.getSchoolId();
+
+      if (schoolId == null || schoolId.isEmpty) {
+        throw Exception('School ID not found');
+      }
+
+      print('👨‍👩‍👧‍👦 Getting parents for student ID: $studentId with schoolId: $schoolId');
+      print('👨‍👩‍👧‍👦 Headers: $headers');
+
+      final url = '$baseUrl/students/$studentId?schoolId=$schoolId';
+      print('👨‍👩‍👧‍👦 URL: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: headers,
+      );
+
+      print('👨‍👩‍👧‍👦 Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final dynamic responseData = json.decode(response.body);
+        print('👨‍👩‍👧‍👦 Full response data: $responseData');
+
+        Map<String, dynamic> studentData;
+
+        // Check if the response is wrapped in a success/data object
+        if (responseData is Map<String, dynamic> &&
+            responseData.containsKey('success') &&
+            responseData.containsKey('data')) {
+          studentData = responseData['data'] as Map<String, dynamic>;
+        } else if (responseData is Map<String, dynamic>) {
+          studentData = responseData;
+        } else {
+          throw Exception('Unexpected response format');
+        }      // Extract parent IDs from the student data
+        final parentIds = studentData['parents'];
+        if (parentIds == null || (parentIds is List && parentIds.isEmpty)) {
+          return [];
+        }
+
+        // If we have parent data directly in the response
+        if (studentData.containsKey('parentDetails') && 
+            studentData['parentDetails'] is List) {
+          final List<dynamic> rawDetails = studentData['parentDetails'];
+          return rawDetails.map<Map<String, dynamic>>((parentDetail) {
+            if (parentDetail is Map<String, dynamic>) {
+              // Make sure the _id field is a simple string
+              String parentId = parentDetail['_id']?.toString() ?? '';
+              return {
+                '_id': parentId,
+                'name': parentDetail['name'] ?? 'Parent of ${studentData['name']}',
+                'phone': parentDetail['phone']?.toString(),
+                'email': parentDetail['email']?.toString(),
+              };
+            } else {
+              // If it's just an ID, create a basic map
+              return {
+                '_id': parentDetail.toString(),
+                'name': 'Parent of ${studentData['name']}',
+              };
+            }
+          }).toList();
+        }
+
+        // Return the parent IDs as maps so the UI can display them
+        // In a real app, you would fetch the complete parent details from a parent endpoint
+        if (parentIds is List) {
+          return parentIds.map<Map<String, dynamic>>((parentId) {
+            // Convert to string if it's not already a string
+            String id = parentId is String ? parentId : parentId.toString();
+            return {
+              '_id': id,
+              'name': 'Parent of ${studentData['name']}', // Placeholder name
+            };
+          }).toList();
+        }
+
+        return [];
+      } else {
+        print('👨‍👩‍👧‍👦 Error response body: ${response.body}');
+        throw Exception('Failed to load parent details: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('👨‍👩‍👧‍👦 Error getting parent details: $e');
+      throw Exception('Error getting parent details: $e');
+    }
+  }
 }
 

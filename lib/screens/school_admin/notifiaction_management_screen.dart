@@ -84,10 +84,6 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
     }
   }
 
-  List<NotificationModel> _getFilteredNotifications(String? type) {
-    if (type == null) return _notifications;
-    return _notifications.where((notification) => notification.type == type).toList();
-  }
 
   // Update this method to filter announcements
   List<NotificationModel> _getAnnouncementNotifications() {
@@ -508,28 +504,45 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
         ),
       ),
     );
-  }
-
-  // Show dialog for sending message to a parent
+  }  // Show dialog for sending message to a parent
   void _showParentMessageDialog() {
-    // Navigate to parent selection screen
+    // First show student selection to find parents
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => RecipientSelectionScreen(
-          title: 'Select Parent',
-          recipientType: 'parent',
-          service: _parentService,
-          icon: Icons.family_restroom,
-          iconBackgroundColor: Colors.pinkAccent.shade200,
-          onRecipientSelected: (String parentId, String parentName) {
+        builder: (context) => StudentWithParentsSelectionScreen(
+          studentService: _studentService,
+          onParentSelected: (String parentId, String parentName) {
+            // Debug print to verify the parent ID
+            print('👪 Selected parent ID: $parentId');
+            print('👪 Selected parent name: $parentName');
+            
+            // Extract just the ID part if we received a full object
+            String actualParentId = parentId;
+            if (parentId.contains('_id:')) {
+              // Try to extract the ID from a stringified object
+              final idMatch = RegExp(r'_id:\s*([^,\s}]+)').firstMatch(parentId);
+              if (idMatch != null && idMatch.group(1) != null) {
+                actualParentId = idMatch.group(1)!;
+              }
+            }
+            
+            if (actualParentId.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Invalid parent ID')),
+              );
+              return;
+            }
+            
+            print('👪 Processed parent ID: $actualParentId');
+            
             // Show message composition dialog
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => MessageCompositionScreen(
                   recipientType: 'Parent',
-                  recipientId: parentId,
+                  recipientId: actualParentId,
                   recipientName: parentName,
                   iconData: Icons.family_restroom,
                   iconColor: Colors.pinkAccent.shade200,
@@ -537,7 +550,7 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
                     _sendNotification(
                       type: 'Parent',
                       message: message,
-                      parentId: parentId,
+                      parentId: actualParentId,
                     );
                   },
                 ),
@@ -548,7 +561,6 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
       ),
     );
   }
-
   // Common method to send notifications of any type
   Future<void> _sendNotification({
     required String type,
@@ -558,7 +570,6 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
     String? studentId,
     String? classId,
     String? parentId,
-    DateTime? scheduleDate,
   }) async {
     // Show loading indicator
     showDialog(
@@ -576,7 +587,20 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
           teacherId: teacherId,
           message: message,
         );
-      } else {
+      } 
+      else if (type == 'Class' && classId != null) {
+        success = await _notificationService.sendClassNotification(
+          classId: classId,
+          message: message,
+        );
+      }      else if (type == 'Parent' && parentId != null) {
+        print('👪 Sending notification to parent ID: $parentId');
+        success = await _notificationService.sendParentNotification(
+          parentId: parentId,
+          message: message,
+        );
+      }
+      else {
         // Use the general notification endpoint for other types
         success = await _notificationService.sendNotification(
           type: type,
@@ -1042,8 +1066,7 @@ class _RecipientSelectionScreenState extends State<RecipientSelectionScreen> {
 
 // New screen for composing a message to a selected recipient
 class MessageCompositionScreen extends StatefulWidget {
-  final String recipientType;
-  final String recipientId;
+  final String recipientType;  final String recipientId;
   final String recipientName;
   final IconData iconData;
   final Color iconColor;
@@ -1177,6 +1200,282 @@ class _MessageCompositionScreenState extends State<MessageCompositionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// New screen for selecting parents of students
+class StudentWithParentsSelectionScreen extends StatefulWidget {
+  final StudentService studentService;
+  final Function(String id, String name) onParentSelected;
+
+  const StudentWithParentsSelectionScreen({
+    Key? key,
+    required this.studentService,
+    required this.onParentSelected,
+  }) : super(key: key);
+
+  @override
+  State<StudentWithParentsSelectionScreen> createState() => _StudentWithParentsSelectionScreenState();
+}
+
+class _StudentWithParentsSelectionScreenState extends State<StudentWithParentsSelectionScreen> {
+  List<Map<String, dynamic>> _students = [];
+  List<Map<String, dynamic>> _filteredStudents = [];
+  bool _isLoading = true;
+  String? _error;
+  final TextEditingController _searchController = TextEditingController();
+  
+  // Map to store parents for each student
+  final Map<String, List<Map<String, dynamic>>> _parentsMap = {};
+  // Map to track expanded state of each student card
+  final Map<String, bool> _expandedMap = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudents();
+    
+    _searchController.addListener(() {
+      _filterStudents(_searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadStudents() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final students = await widget.studentService.getAllStudents();
+      
+      setState(() {
+        _students = students;
+        _filteredStudents = students;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadParentsForStudent(String studentId) async {
+    if (_parentsMap.containsKey(studentId)) {
+      return; // Parents already loaded
+    }
+
+    try {
+      final parents = await widget.studentService.getParentsByStudentId(studentId);
+      
+      setState(() {
+        _parentsMap[studentId] = parents;
+      });
+    } catch (e) {
+      print('Error loading parents for student $studentId: $e');
+      // Set empty array to avoid repeated failed requests
+      _parentsMap[studentId] = [];
+    }
+  }
+
+  void _filterStudents(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        _filteredStudents = _students;
+      });
+      return;
+    }
+    
+    final lowercaseQuery = query.toLowerCase();
+    
+    setState(() {
+      _filteredStudents = _students.where((student) {
+        final name = student['name']?.toString().toLowerCase() ?? '';
+        final studentId = student['studentId']?.toString().toLowerCase() ?? '';
+        return name.contains(lowercaseQuery) || studentId.contains(lowercaseQuery);
+      }).toList();
+    });
+  }
+
+  void _toggleExpanded(String studentId) {
+    setState(() {
+      _expandedMap[studentId] = !(_expandedMap[studentId] ?? false);
+    });
+
+    if (_expandedMap[studentId] == true) {
+      _loadParentsForStudent(studentId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Select Student\'s Parent'),
+        backgroundColor: Colors.pinkAccent.shade200,
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search students by name...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0.0, horizontal: 12.0),
+              ),
+            ),
+          ),
+          
+          // Results
+          Expanded(
+            child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Error: $_error', style: const TextStyle(color: Colors.red)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _loadStudents,
+                          child: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  )
+                : _filteredStudents.isEmpty
+                  ? const Center(child: Text('No students found'))
+                  : ListView.builder(
+                      itemCount: _filteredStudents.length,
+                      padding: const EdgeInsets.all(12),
+                      itemBuilder: (context, index) {
+                        final student = _filteredStudents[index];
+                        final studentId = student['_id'] ?? '';
+                        final studentName = student['name'] ?? 'Unknown';
+                        final studentClass = student['classId'] is Map ? 
+                            student['classId']['name'] ?? 'Unknown class' : 'Unknown class';
+                        final isExpanded = _expandedMap[studentId] ?? false;
+                        
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                          child: Column(
+                            children: [
+                              // Student information
+                              ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.teal.shade300,
+                                  child: const Icon(Icons.person, color: Colors.white),
+                                ),
+                                title: Text(studentName),
+                                subtitle: Text('Class: $studentClass'),
+                                trailing: IconButton(
+                                  icon: Icon(
+                                    isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                    color: Colors.pinkAccent.shade200,
+                                  ),
+                                  onPressed: () => _toggleExpanded(studentId),
+                                ),
+                              ),
+                              
+                              // Parents list (shown when expanded)
+                              if (isExpanded)
+                                _buildParentsList(studentId),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParentsList(String studentId) {
+    // Check if parents are loaded
+    if (!_parentsMap.containsKey(studentId)) {
+      _loadParentsForStudent(studentId);
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final parents = _parentsMap[studentId]!;
+    
+    if (parents.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text('No parents associated with this student'),
+      );
+    }
+
+    return Container(
+      color: Colors.grey.shade100,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0),
+            child: Text(
+              'Parents:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ),          ...parents.map((parent) {
+            // Ensure we have string values for id and name
+            String parentId = parent['_id'] is String 
+                ? parent['_id'] 
+                : (parent['_id']?.toString() ?? '');
+            
+            String parentName = parent['name'] is String 
+                ? parent['name'] 
+                : (parent['name']?.toString() ?? 'Unknown Parent');
+
+            String? phone = parent['phone'] is String 
+                ? parent['phone'] 
+                : (parent['phone']?.toString());
+                
+            return ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.pinkAccent.shade200,
+                child: const Icon(Icons.family_restroom, color: Colors.white, size: 20),
+              ),            title: Text(parentName),
+            subtitle: phone != null ? Text('Phone: $phone') : null,
+            onTap: () {
+              // Debug the actual value we're passing
+              print('Selected parent ID: $parentId');
+              widget.onParentSelected(parentId, parentName);
+            },
+            );
+          }).toList(),
+        ],
       ),
     );
   }

@@ -274,7 +274,6 @@ class FCMService {
       }
     }
   }
-
   // Store user FCM data and token ID
   Future<void> storeFCMDataForUser({
     required String userId,
@@ -283,6 +282,10 @@ class FCMService {
     String? classId,
   }) async {
     try {
+      if (kDebugMode) {
+        print('📝 FCM storeFCMDataForUser called with classId: $classId');
+      }
+      
       if (_fcmToken == null) {
         await _getFCMToken();
       }
@@ -294,7 +297,9 @@ class FCMService {
         // If it's a student with a class ID, also subscribe to class topic
         if (userRole == 'student' && classId != null && classId.isNotEmpty) {
           await _firebaseMessaging.subscribeToTopic('class_$classId');
-          print('📚 Subscribed to class topic: class_$classId');
+          if (kDebugMode) {
+            print('📚 Subscribed to class topic: class_$classId');
+          }
         }
       }
 
@@ -308,9 +313,12 @@ class FCMService {
         'deviceType': kIsWeb ? 'web' : Platform.operatingSystem.toLowerCase(),
       };
       
-      // Add classId for student role
-      if (userRole == 'student' && classId != null && classId.isNotEmpty) {
+      // Add classId for student role if it exists and is not empty
+      if (classId != null && classId.isNotEmpty) {
         fcmData['classId'] = classId;
+        if (kDebugMode) {
+          print('📝 Adding classId to FCM data: $classId');
+        }
       }
 
       if (kDebugMode) {
